@@ -93,7 +93,7 @@ def calc_match_rate(true, pred, tol_ratio=0.10):
 
 # ===== メイン処理 =====
 def main():
-    window_size = 100
+    window_size = 15
 
     # 1. まず全ての学習用データを1つのDataFrameにまとめて、スケーラーを作る
     train_df_list = []
