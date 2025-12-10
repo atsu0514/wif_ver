@@ -7,7 +7,6 @@ from torch.utils.data import Dataset, DataLoader, ConcatDataset
 from sklearn.preprocessing import MinMaxScaler
 import matplotlib.pyplot as plt
 
-
 class LSTMModel(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, output_size):
         super(LSTMModel, self).__init__()
