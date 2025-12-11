@@ -5,7 +5,6 @@ import time
 import threading
 import logging
 import numpy as np
-import pandas as pd
 import torch
 import torch.nn as nn
 import joblib
@@ -14,7 +13,7 @@ import csv
 from flask import Flask, request, abort
 from dotenv import load_dotenv
 from linebot import LineBotApi, WebhookHandler
-from linebot.exceptions import InvalidSignatureError, LineBotApiError
+from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 
 # ==========================================
@@ -23,7 +22,7 @@ from linebot.models import MessageEvent, TextMessage, TextSendMessage
 WINDOW_SIZE = 15
 HIDDEN_SIZE = 32
 NUM_LAYERS = 1
-NOTIFY_COOLDOWN = 60  # 異常通知の抑制時間(秒)
+NOTIFY_COOLDOWN = 10  # 異常通知の抑制時間(秒)
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 MODELS_DIR = os.path.join(BASE_DIR, "models")
@@ -199,14 +198,18 @@ class RealtimePredictor:
 def parse_sensor_line(data_line):
     try:
         parts = data_line.strip().split(',')
-        if len(parts) < 7: return None
+        if len(parts) < 5:
+            return None
         return {
             "timestamp": datetime.datetime.now(),
-            "presence": int(parts[0]), "movement": int(parts[1]), "moving_range": int(parts[2]),
-            "breathing_rate": int(parts[3]), "heart_rate": int(parts[4]),
-            "fall_state": int(parts[5]), "dwell_state": int(parts[6]),
+            "presence": int(parts[0]),
+            "movement": int(parts[1]),
+            "moving_range": int(parts[2]),
+            "breathing_rate": int(parts[3]),
+            "heart_rate": int(parts[4]),
         }
-    except: return None
+    except:
+        return None
 
 # ==========================================
 # 4. メイン処理 (ソケット受信ループ)
@@ -221,7 +224,11 @@ def run_realtime_system():
     # CSVオープン
     log_file = open(LOG_CSV_PATH, "w", newline="", encoding="utf-8")
     log_writer = csv.writer(log_file)
-    log_writer.writerow(["Timestamp","Presence","Movement","MovingRange","BreathingRate","HeartRate","FallState","DwellState","PredHeart","PredBreath","AnomalyScore","IsAnomaly"])
+    log_writer.writerow([
+        "Timestamp","Presence","Movement","MovingRange",
+        "BreathingRate","HeartRate",
+        "PredHeart","PredBreath","AnomalyScore","IsAnomaly"
+    ])
 
     print(f"Waiting for connection on {HOST}:{PORT}...")
     
@@ -291,7 +298,6 @@ def run_realtime_system():
                                         ts.strftime("%Y-%m-%d %H:%M:%S.%f"),
                                         parsed["presence"], parsed["movement"], parsed["moving_range"],
                                         parsed["breathing_rate"], parsed["heart_rate"],
-                                        parsed["fall_state"], parsed["dwell_state"],
                                         f"{result['pred_heart']:.3f}", f"{result['pred_breath']:.3f}",
                                         f"{score:.6f}", int(is_anom)
                                     ])

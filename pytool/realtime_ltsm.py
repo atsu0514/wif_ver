@@ -142,15 +142,16 @@ class RealtimePredictor:
         }
 
 
+# parse_sensor_line を 5項目用に変更
 def parse_sensor_line(data_line):
     """
-    receive.py と同じ形式の 7要素カンマ区切り文字列をパースする:
-    presence, movement, moving_range, breathing_rate, heart_rate, fall_state, dwell_state
+    presence, movement, moving_range, breathing_rate, heart_rate
+    の 5要素カンマ区切り文字列をパースする
     """
     try:
         parts = data_line.strip().split(',')
-        if len(parts) < 7:
-            print(f"データ形式エラー: 期待7要素, 実際{len(parts)}要素 -> {data_line}")
+        if len(parts) < 5:
+            print(f"データ形式エラー: 期待5要素, 実際{len(parts)}要素 -> {data_line}")
             return None
 
         return {
@@ -160,8 +161,6 @@ def parse_sensor_line(data_line):
             "moving_range": int(parts[2]),
             "breathing_rate": int(parts[3]),
             "heart_rate": int(parts[4]),
-            "fall_state": int(parts[5]),
-            "dwell_state": int(parts[6]),
         }
     except Exception as e:
         print(f"parse_sensor_line エラー: {e}, data={data_line}")
@@ -175,11 +174,11 @@ def run_realtime_from_socket():
     # CSVログ初期化
     log_file = open(LOG_CSV_PATH, "w", newline="", encoding="utf-8")
     log_writer = csv.writer(log_file)
+    # CSV ヘッダ（FallState, DwellState を削除）
     log_writer.writerow([
         "Timestamp",
         "Presence", "Movement", "MovingRange",
         "BreathingRate", "HeartRate",
-        "FallState", "DwellState",
         "PredHeart", "PredBreath",
         "AnomalyScore", "IsAnomaly",
     ])
@@ -246,7 +245,7 @@ def run_realtime_from_socket():
                                         f"| score={score:.5f} {alert}"
                                     )
 
-                                    # CSVに1行書き込み（生データ＋予測＋スコア）
+                                    # CSV 1行書き込み（fall/dwell を削除）
                                     log_writer.writerow([
                                         ts_full,
                                         parsed["presence"],
@@ -254,8 +253,6 @@ def run_realtime_from_socket():
                                         parsed["moving_range"],
                                         parsed["breathing_rate"],
                                         parsed["heart_rate"],
-                                        parsed["fall_state"],
-                                        parsed["dwell_state"],
                                         f"{pred_h:.3f}",
                                         f"{pred_b:.3f}",
                                         f"{score:.6f}",

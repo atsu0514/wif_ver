@@ -16,42 +16,44 @@ class C1001RealTimePlot:
         self.max_points = max_points
         self.server_running = True
        
-        # ★追加: CSVファイル名の生成（実行日時を含める）
+        # CSVファイル名
         self.csv_filename = f"sensor_data_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-        self.init_csv()
+        self.init_csv()  # ← この中で open して保持するように変更
 
         # データバッファの初期化
         self.time_buffer = deque(maxlen=max_points)
-        self.presence_data = deque([0] * max_points, maxlen=max_points)      # decode[0]
-        self.movement_data = deque([0] * max_points, maxlen=max_points)      # decode[1]
-        self.moving_range_data = deque([0] * max_points, maxlen=max_points)  # decode[2]
-        self.breathing_data = deque([0] * max_points, maxlen=max_points)     # decode[3]
-        self.heart_rate_data = deque([0] * max_points, maxlen=max_points)    # decode[4]
-        self.fall_data = deque([0] * max_points, maxlen=max_points)          # decode[5] ★追加
-        self.dwell_data = deque([0] * max_points, maxlen=max_points)         # decode[6] ★追加
+        self.presence_data = deque([0] * max_points, maxlen=max_points)
+        self.movement_data = deque([0] * max_points, maxlen=max_points)
+        self.moving_range_data = deque([0] * max_points, maxlen=max_points)
+        self.breathing_data = deque([0] * max_points, maxlen=max_points)
+        self.heart_rate_data = deque([0] * max_points, maxlen=max_points)
+        # self.fall_data = ...
+        # self.dwell_data = ...  ← これらは削除
        
         # プロットの設定
         self.setup_plot()
  
     # ★追加: CSVファイルの初期化（ヘッダー書き込み）
     def init_csv(self):
-        with open(self.csv_filename, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow([
-                'Timestamp','Presence','Movement','MovingRange',
-                'BreathingRate','HeartRate','FallState','DwellState'
-            ])
+        # ここで open して、writer を保持する
+        self.csv_file = open(self.csv_filename, 'w', newline='', encoding='utf-8')
+        self.csv_writer = csv.writer(self.csv_file)
+        self.csv_writer.writerow([
+            'Timestamp','Presence','Movement','MovingRange',
+            'BreathingRate','HeartRate'
+        ])
         print(f"CSV保存を開始しました: {self.csv_filename}")
+
     # ★追加: データをCSVに追記するメソッド
     def save_to_csv(self, data):
-        with open(self.csv_filename, 'a', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow([
-                data['timestamp'].strftime('%Y-%m-%d %H:%M:%S.%f'), # ミリ秒まで記録
-                data['presence'], data['movement'], data['moving_range'],
-                data['breathing_rate'], data['heart_rate'],
-                data['fall_state'], data['dwell_state']
-            ])
+        # 毎回 open しないで、そのまま書き込む
+        self.csv_writer.writerow([
+            data['timestamp'].strftime('%Y-%m-%d %H:%M:%S.%f'), # ミリ秒まで記録
+            data['presence'], data['movement'], data['moving_range'],
+            data['breathing_rate'], data['heart_rate']
+        ])
+        # 必要なら即ディスク反映したい場合だけ
+        # self.csv_file.flush()
    
     def setup_plot(self):
         """プロットの初期設定"""
@@ -106,22 +108,6 @@ class C1001RealTimePlot:
         self.ax5.axhline(y=100, color='red', linestyle='--', alpha=0.7, label='上限 (100)')
         self.ax5.legend(fontsize=8)
         self.ax5.grid(True, alpha=0.3)
-       
-        # プロット6: Fall Status (転倒状態)
-        self.line6, = self.ax6.plot([], [], 'teal', linewidth=2, marker='h', markersize=3)
-        self.ax6.set_title('⑥ Fall Status - 転倒状態')
-        self.ax6.set_ylabel('0:正常 / 1:転倒')
-        self.ax6.set_ylim(-0.1, 1.5)
-        self.ax6.set_yticks([0, 1])
-        self.ax6.grid(True, alpha=0.3)
-
-        # プロット7: Dwell Status (静止滞在)
-        self.line7, = self.ax7.plot([], [], 'brown', linewidth=2, marker='p', markersize=3)
-        self.ax7.set_title('⑦ Dwell Status - 静止滞在')
-        self.ax7.set_ylabel('0:無 / 1:静止')
-        self.ax7.set_ylim(-0.1, 1.5)
-        self.ax7.set_yticks([0, 1])
-        self.ax7.grid(True, alpha=0.3)
 
         # プロット8: 総合ビュー（正規化）
         self.line8a, = self.ax8.plot([], [], 'b-', label='Presence', linewidth=1.2)
@@ -129,8 +115,6 @@ class C1001RealTimePlot:
         self.line8c, = self.ax8.plot([], [], 'r-', label='MovingRange', linewidth=1.2)
         self.line8d, = self.ax8.plot([], [], 'purple', label='Breathing', linewidth=1.2)
         self.line8e, = self.ax8.plot([], [], 'orange', label='HeartRate', linewidth=1.2)
-        self.line8f, = self.ax8.plot([], [], 'teal', label='Fall', linewidth=1.2)
-        self.line8g, = self.ax8.plot([], [], 'brown', label='Dwell', linewidth=1.2)
         self.ax8.set_title('⑧ 総合ビュー（正規化）')
         self.ax8.set_ylim(0, 1.1)
         self.ax8.legend(fontsize=8, ncol=3)
@@ -139,23 +123,19 @@ class C1001RealTimePlot:
         self.fig.suptitle('C1001 mmWave センサー リアルタイムモニタリング', fontsize=14, fontweight='bold', y=1.02)
        
     def parse_sensor_data(self, data_line):
-        """センサーデータの解析 - decode[0]からdecode[4]までを抽出"""
         try:
-            # データをカンマで分割
             parts = data_line.strip().split(',')
-            if len(parts) >= 7:
+            if len(parts) >= 5:  # ★ 5 以上あればOK
                 return {
                     'timestamp': datetime.datetime.now(),
-                    'presence': int(parts[0]),      # decode[0]
-                    'movement': int(parts[1]),      # decode[1]
-                    'moving_range': int(parts[2]),  # decode[2]
-                    'breathing_rate': int(parts[3]), # decode[3]
-                    'heart_rate': int(parts[4]),     # decode[4]
-                    'fall_state': int(parts[5]),     # decode[5] ★追加
-                    'dwell_state': int(parts[6])     # decode[6] ★追加
+                    'presence': int(parts[0]),
+                    'movement': int(parts[1]),
+                    'moving_range': int(parts[2]),
+                    'breathing_rate': int(parts[3]),
+                    'heart_rate': int(parts[4]),
                 }
             else:
-                print(f"データ形式エラー: 期待7要素, 実際{len(parts)}要素")
+                print(f"データ形式エラー: 期待5要素以上, 実際{len(parts)}要素")
                 return None
         except ValueError as e:
             print(f"データ変換エラー: {e}, データ: {data_line}")
@@ -178,8 +158,6 @@ class C1001RealTimePlot:
         self.moving_range_data.append(data['moving_range'])
         self.breathing_data.append(data['breathing_rate'])
         self.heart_rate_data.append(data['heart_rate'])
-        self.fall_data.append(data['fall_state'])
-        self.dwell_data.append(data['dwell_state'])
         # タイムスタンプの更新
         self.time_buffer.append(data['timestamp'])
    
@@ -213,14 +191,6 @@ class C1001RealTimePlot:
             # プロット5: Heart Rate
             self.line5.set_data(time_indices, list(self.heart_rate_data))
             self.ax5.set_xlim(time_indices[0], time_indices[-1])
-           
-            # プロット6: Fall Status
-            self.line6.set_data(time_indices, list(self.fall_data))
-            self.ax6.set_xlim(time_indices[0], time_indices[-1])
-
-            # プロット7: Dwell Status
-            self.line7.set_data(time_indices, list(self.dwell_data))
-            self.ax7.set_xlim(time_indices[0], time_indices[-1])
 
             # 総合ビュー（正規化）
             if current_length > 0:
@@ -230,16 +200,12 @@ class C1001RealTimePlot:
                 moving_range_norm = [min(x / 100.0, 1.0) for x in self.moving_range_data]  # 0-100を0-1に
                 breathing_norm = [min(x / 30.0, 1.0) for x in self.breathing_data]  # 0-30を0-1に
                 heart_norm = [min(x / 120.0, 1.0) for x in self.heart_rate_data]  # 0-120を0-1に
-                fall_norm = list(self.fall_data)  # 0-1なのでそのまま
-                dwell_norm = list(self.dwell_data)  # 0-1なのでそのまま
 
                 self.line8a.set_data(time_indices, presence_norm)
                 self.line8b.set_data(time_indices, movement_norm)
                 self.line8c.set_data(time_indices, moving_range_norm)
                 self.line8d.set_data(time_indices, breathing_norm)
                 self.line8e.set_data(time_indices, heart_norm)
-                self.line8f.set_data(time_indices, fall_norm)
-                self.line8g.set_data(time_indices, dwell_norm)
                 self.ax8.set_xlim(time_indices[0], time_indices[-1])
            
             # ステータス表示を更新
@@ -266,8 +232,7 @@ class C1001RealTimePlot:
            
         return [
             self.line1, self.line2, self.line3, self.line4, self.line5,
-            self.line6, self.line7,
-            self.line8a, self.line8b, self.line8c, self.line8d, self.line8e, self.line8f, self.line8g
+            self.line8a, self.line8b, self.line8c, self.line8d, self.line8e
         ]
    
     def check_health_alerts(self):
@@ -367,6 +332,8 @@ class C1001RealTimePlot:
             print("\nプログラムを終了します")
         finally:
             self.server_running = False
+            # ★ 追加：CSV を閉じる
+            self.csv_file.close()
  
 # メイン実行関数
 def main():
@@ -378,8 +345,6 @@ def main():
     print("  [2] Moving Range (活動範囲): 数値")
     print("  [3] Breathing Rate (呼吸数): 回/分 (正常: 10-25)")
     print("  [4] Heart Rate (心拍数): BPM (正常: 60-100)")
-    print("  [5] Fall State (転倒状態): 0=正常, 1=転倒")
-    print("  [6] Dwell State (静止滞在): 0=無, 1=静止")
     print("=" * 50)
    
     # リアルタイムプロットのインスタンス作成
