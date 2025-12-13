@@ -36,6 +36,7 @@ CSV_LIST = [
     "sensor_data_20251202_230232.csv",
     "sensor_data_20251203_000616.csv",
     "sensor_data_20251203_232723.csv",
+    "sensor_data_20251212_003309.csv",
 ]
 
 # テスト用にするCSV
@@ -51,7 +52,7 @@ class SensorDataset(Dataset):
     def __init__(self, df, scaler_x, scaler_y, window_size=10):
         self.window_size = window_size
 
-        feature_cols = ["Presence", "Movement", "MovingRange", "HeartRate", "BreathingRate"]
+        feature_cols = ["MovingRange", "HeartRate", "BreathingRate"]
         target_cols = ["HeartRate", "BreathingRate"]
 
         features = df[feature_cols].values
@@ -116,7 +117,7 @@ def main():
     scaler_x = MinMaxScaler()
     scaler_y = MinMaxScaler()
 
-    feature_cols = ["Presence", "Movement", "MovingRange", "HeartRate", "BreathingRate"]
+    feature_cols = ["MovingRange", "HeartRate", "BreathingRate"]
     target_cols = ["HeartRate", "BreathingRate"]
 
     scaler_x.fit(full_train_df[feature_cols].values)
@@ -164,7 +165,7 @@ def main():
     test_loader = DataLoader(test_full, batch_size=16, shuffle=False)
 
     # --- モデル定義 ---
-    input_size = 5          # 特徴量数
+    input_size = 3          # 特徴量数
     hidden_size = 32
     num_layers = 1
     output_size = 2         # HeartRate と BreathingRate の2出力
@@ -205,9 +206,39 @@ def main():
     train_mean = train_losses.mean()
     train_std = train_losses.std()
 
-    # 「平均 + 3シグマ」を閾値にする
-    threshold = float(train_mean + 3 * train_std)
-    print(f"Calculated Threshold (Mean + 3std): {threshold:.4f}")
+    # --- 閾値の決定論理 ---
+    # 論理1: 3σ法 (正規分布を仮定する場合) -> 今回は不採用
+    threshold_3sigma = float(train_mean + 3 * train_std)
+    
+    # 論理2: 99.7%点 (3σと同じ包含率を、分布によらず実現する場合) -> アカデミックに推奨
+    threshold_997 = np.percentile(train_losses, 99.7)
+
+    # 論理3: 99.0%点 (感度優先、ノイズ除去) -> 実用上推奨
+    threshold_990 = np.percentile(train_losses, 99.0)
+
+    print(f"Threshold (Mean + 3std) : {threshold_3sigma:.4f}")
+    print(f"Threshold (99.7%)       : {threshold_997:.4f}  <-- Recommended for 3-sigma equivalence")
+    print(f"Threshold (99.0%)       : {threshold_990:.4f}  <-- Recommended for high sensitivity")
+
+    # ここで採用する閾値を決定
+    threshold = threshold_990
+
+    # --- ヒストグラムの表示 ---
+    plt.figure(figsize=(10, 6))
+    plt.hist(train_losses, bins=50, alpha=0.7, color='blue', edgecolor='black', label='Train Loss')
+    
+    # 比較用に線を引く
+    plt.axvline(threshold_3sigma, color='green', linestyle=':', label=f'3-sigma: {threshold_3sigma:.4f}')
+    plt.axvline(threshold_997, color='red', linestyle='-', label=f'99.7%: {threshold_997:.4f}')
+    plt.axvline(threshold_990, color='orange', linestyle='--', label=f'99.0%: {threshold_990:.4f}')
+
+    plt.title('Histogram of Training Losses (Threshold Comparison)')
+    plt.xlabel('Loss (MSE)')
+    plt.ylabel('Frequency')
+    plt.legend()
+    plt.grid(axis='y', alpha=0.5)
+    plt.show()
+    # ------------------------------------
 
     # ===== TEST データ上での予測 vs 実測（スケール空間での一致率）=====
     model.eval()

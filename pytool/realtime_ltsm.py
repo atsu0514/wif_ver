@@ -70,7 +70,7 @@ class RealtimePredictor:
         self.scaler_x = joblib.load(SCALER_X_PATH)
         self.scaler_y = joblib.load(SCALER_Y_PATH)
 
-        self.model = LSTMModel(input_size=5,
+        self.model = LSTMModel(input_size=3,
                                hidden_size=HIDDEN_SIZE,
                                num_layers=NUM_LAYERS,
                                output_size=2)
@@ -90,7 +90,7 @@ class RealtimePredictor:
 
     def process_new_data(self, data_row):
         """
-        data_row: [Presence, Movement, MovingRange, HeartRate, BreathingRate]
+        data_row: [MovingRange, HeartRate, BreathingRate]
                   のリストまたは配列
         """
         # 1. バッファに追加
@@ -101,10 +101,10 @@ class RealtimePredictor:
             return None
 
         # 2. 入力データの作成とスケーリング
-        input_data = np.array(self.buffer)  # [window, 5]
+        input_data = np.array(self.buffer)  # [window, 3]
         input_scaled = self.scaler_x.transform(input_data)
 
-        # Tensor化 [1, window, 5]
+        # Tensor化 [1, window, 3]
         input_tensor = torch.tensor(input_scaled,
                                     dtype=torch.float32).unsqueeze(0)
 
@@ -216,8 +216,6 @@ def run_realtime_from_socket():
 
                                     # LSTM学習時と同じ特徴量の順番に並べる
                                     features = [
-                                        parsed["presence"],
-                                        parsed["movement"],
                                         parsed["moving_range"],
                                         parsed["heart_rate"],
                                         parsed["breathing_rate"],
@@ -289,7 +287,7 @@ def main_simulation():
     print(f"Reading {TEST_CSV} for simulation...")
     df = pd.read_csv(TEST_CSV)
 
-    feature_cols = ["Presence", "Movement", "MovingRange", "HeartRate", "BreathingRate"]
+    feature_cols = ["MovingRange", "HeartRate", "BreathingRate"]
     data_stream = df[feature_cols].values
 
     print("Start Real-time Simulation...")

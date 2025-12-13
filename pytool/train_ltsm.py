@@ -60,7 +60,8 @@ class LSTMModel(nn.Module):
 class SensorDataset(Dataset):
     def __init__(self, df, scaler_x, scaler_y, window_size=10):
         self.window_size = window_size
-        feature_cols = ["Presence", "Movement", "MovingRange", "HeartRate", "BreathingRate"]
+        # ★修正: 特徴量を3つに変更 (Presence, Movement を削除)
+        feature_cols = ["MovingRange", "HeartRate", "BreathingRate"]
         target_cols = ["HeartRate", "BreathingRate"]
         features = df[feature_cols].values
         targets = df[target_cols].values
@@ -93,7 +94,8 @@ def main():
     scaler_x = MinMaxScaler()
     scaler_y = MinMaxScaler()
     
-    feature_cols = ["Presence", "Movement", "MovingRange", "HeartRate", "BreathingRate"]
+    # ★修正: ここも3つに変更
+    feature_cols = ["MovingRange", "HeartRate", "BreathingRate"]
     target_cols = ["HeartRate", "BreathingRate"]
     
     scaler_x.fit(full_train_df[feature_cols].values)
@@ -119,7 +121,8 @@ def main():
     train_loader = DataLoader(train_full, batch_size=16, shuffle=True)
     
     # 3. モデル学習
-    model = LSTMModel(input_size=5, hidden_size=HIDDEN_SIZE, num_layers=NUM_LAYERS, output_size=2)
+    # ★修正: input_size を 5 -> 3 に変更
+    model = LSTMModel(input_size=3, hidden_size=HIDDEN_SIZE, num_layers=NUM_LAYERS, output_size=2)
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     
@@ -154,7 +157,11 @@ def main():
             train_losses.extend(loss_batch.numpy())
     
     train_losses = np.array(train_losses)
-    threshold = train_losses.mean() + 3 * train_losses.std()
+    #3σだと閾値が大きすぎたので99%にする
+    threshold = np.percentile(train_losses, 99.0)
+    #平均+3σ法でアノマリースコアの閾値を計算
+    #threshold = train_losses.mean() + 3 * train_losses.std()
+
     
     with open(THRESHOLD_PATH, "w") as f:
         f.write(str(threshold))
