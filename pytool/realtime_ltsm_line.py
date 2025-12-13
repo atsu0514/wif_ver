@@ -47,6 +47,7 @@ latest_status = {
     "anomaly_score": 0.0,
     "is_anomaly": False
 }
+status_lock = threading.Lock()  # ★これがあるか確認
 
 # ==========================================
 # 2. LINE Bot / Flask サーバー設定
@@ -85,17 +86,21 @@ def handle_text_message(event: MessageEvent):
     text = event.message.text.strip()
     
     if text == "状態" or text == "ステータス":
-        if latest_status["timestamp"] is None:
+        # ★追加: ロックを取得して安全にデータをコピー
+        with status_lock:
+            current_status = latest_status.copy()
+
+        if current_status["timestamp"] is None:
             reply = "まだデータを受信していません。"
         else:
-            ts_str = latest_status["timestamp"].strftime("%H:%M:%S")
-            anom_str = "⚠️異常検知中" if latest_status["is_anomaly"] else "✅正常"
+            ts_str = current_status["timestamp"].strftime("%H:%M:%S")
+            anom_str = "⚠️異常検知中" if current_status["is_anomaly"] else "✅正常"
             reply = (
                 f"【現在時刻: {ts_str}】\n"
                 f"状態: {anom_str}\n"
-                f"心拍数: {latest_status['heart_rate']} (予測 {latest_status['pred_heart']:.1f})\n"
-                f"呼吸数: {latest_status['breathing_rate']} (予測 {latest_status['pred_breath']:.1f})\n"
-                f"スコア: {latest_status['anomaly_score']:.4f}"
+                f"心拍数: {current_status['heart_rate']} (予測 {current_status['pred_heart']:.1f})\n"
+                f"呼吸数: {current_status['breathing_rate']} (予測 {current_status['pred_breath']:.1f})\n"
+                f"スコア: {current_status['anomaly_score']:.4f}"
             )
     elif text == "ヘルプ":
         reply = "「状態」と送ると最新のセンサー値を返します。"
@@ -155,7 +160,8 @@ class RealtimePredictor:
     def __init__(self):
         self.scaler_x = joblib.load(SCALER_X_PATH)
         self.scaler_y = joblib.load(SCALER_Y_PATH)
-        self.model = LSTMModel(5, HIDDEN_SIZE, NUM_LAYERS, 2)
+        # ★ input_size=3 になっているか確認
+        self.model = LSTMModel(3, HIDDEN_SIZE, NUM_LAYERS, 2)
         self.model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
         self.model.eval()
         with open(THRESHOLD_PATH, "r") as f:
@@ -257,7 +263,8 @@ def run_realtime_system():
                                     if not parsed: continue
                                     
                                     # 推論
-                                    features = [parsed["presence"], parsed["movement"], parsed["moving_range"], parsed["heart_rate"], parsed["breathing_rate"]]
+                                    # ★ features が3要素になっているか確認
+                                    features = [parsed["moving_range"], parsed["heart_rate"], parsed["breathing_rate"]]
                                     result = predictor.process_new_data(features)
                                     if not result: continue
                                     
@@ -268,7 +275,7 @@ def run_realtime_system():
                                     
                                     # 共有変数の更新（Bot用）
                                     global latest_status
-                                    latest_status = {
+                                    new_status = {
                                         "timestamp": ts,
                                         "heart_rate": parsed["heart_rate"],
                                         "breathing_rate": parsed["breathing_rate"],
@@ -277,6 +284,10 @@ def run_realtime_system():
                                         "anomaly_score": score,
                                         "is_anomaly": is_anom
                                     }
+                                    
+                                    # ★追加: ロックを取得して更新
+                                    with status_lock:
+                                        latest_status = new_status
                                     
                                     # コンソール表示
                                     alert = "<<< ANOMALY >>>" if is_anom else ""
