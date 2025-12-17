@@ -101,6 +101,7 @@ def handle_text_message(event: MessageEvent):
                 f"心拍数: {current_status['heart_rate']} (予測 {current_status['pred_heart']:.1f})\n"
                 f"呼吸数: {current_status['breathing_rate']} (予測 {current_status['pred_breath']:.1f})\n"
                 f"スコア: {current_status['anomaly_score']:.4f}"
+                f"活動状態: {current_status['movement']}"
             )
     elif text == "ヘルプ":
         reply = "「状態」と送ると最新のセンサー値を返します。"
@@ -279,6 +280,7 @@ def run_realtime_system():
                                         "timestamp": ts,
                                         "heart_rate": parsed["heart_rate"],
                                         "breathing_rate": parsed["breathing_rate"],
+                                        "movement": parsed["movement"],
                                         "pred_heart": result["pred_heart"],
                                         "pred_breath": result["pred_breath"],
                                         "anomaly_score": score,
@@ -300,7 +302,8 @@ def run_realtime_system():
                                             msg = (f"⚠️ 異常検知 ⚠️\n"
                                                    f"時刻: {ts.strftime('%H:%M:%S')}\n"
                                                    f"スコア: {score:.4f}\n"
-                                                   f"心拍: {parsed['heart_rate']} (予測 {result['pred_heart']:.1f})")
+                                                   f"心拍: {parsed['heart_rate']} (予測 {result['pred_heart']:.1f})"
+                                                   f"活動状態: {parsed['movement']}")
                                             send_push_notification(msg)
                                             last_notify_time = now
                                     

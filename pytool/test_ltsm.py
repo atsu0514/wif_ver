@@ -1,315 +1,277 @@
 import os
+from collections import deque
+
 import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader, ConcatDataset
-from sklearn.preprocessing import MinMaxScaler
+import joblib
 import matplotlib.pyplot as plt
 
+
+# =========================
+# 設定（必要ならここだけ編集）
+# =========================
+WINDOW_SIZE = 15
+HIDDEN_SIZE = 32
+NUM_LAYERS = 1
+
+# テストしたいCSV（1つだけでもOK）
+TEST_CSV_LIST = [
+    "sensor_data_20251203_232723.csv",
+]
+
+FEATURE_COLS = ["MovingRange", "HeartRate", "BreathingRate"]   # train/realtime と同じ
+TARGET_COLS = ["HeartRate", "BreathingRate"]
+
+
+# =========================
+# モデル成果物の解決（realtime と同じ）
+# =========================
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))  # プロジェクトルート
+MODELS_DIR = os.path.join(BASE_DIR, "models")
+LATEST_PATH = os.path.join(MODELS_DIR, "latest.txt")
+
+
+def _resolve_artifact_dir() -> str:
+    if not os.path.exists(LATEST_PATH):
+        raise FileNotFoundError(f"latest.txt が見つかりません: {LATEST_PATH}")
+    with open(LATEST_PATH, "r", encoding="utf-8") as f:
+        run_id = f.read().strip()
+    artifact_dir = os.path.join(MODELS_DIR, run_id)
+    if not os.path.isdir(artifact_dir):
+        raise FileNotFoundError(f"artifact_dir が見つかりません: {artifact_dir}")
+    return artifact_dir
+
+
+ARTIFACT_DIR = _resolve_artifact_dir()
+MODEL_PATH = os.path.join(ARTIFACT_DIR, "lstm_model.pth")
+SCALER_X_PATH = os.path.join(ARTIFACT_DIR, "scaler_x.pkl")  # pkl（質問のpkiはたぶんtypo）
+SCALER_Y_PATH = os.path.join(ARTIFACT_DIR, "scaler_y.pkl")
+THRESHOLD_PATH = os.path.join(ARTIFACT_DIR, "threshold.txt")
+
+
+# =========================
+# モデル定義（train/realtime と同じ構造）
+# =========================
 class LSTMModel(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers, output_size):
-        super(LSTMModel, self).__init__()
-        self.lstm = nn.LSTM(input_size=input_size,
-                            hidden_size=hidden_size,
-                            num_layers=num_layers,
-                            batch_first=True)
-        self.fc = nn.Linear(hidden_size, output_size)  # output_size=2 (Heart, Breath)
+    def __init__(self, input_size: int, hidden_size: int, num_layers: int, output_size: int):
+        super().__init__()
+        self.lstm = nn.LSTM(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            batch_first=True
+        )
+        self.fc = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
         out, _ = self.lstm(x)
         out = out[:, -1, :]
         out = self.fc(out)
-        return out   # shape: [batch, 2]
+        return out
 
 
-# 学習に使うCSVファイル一覧（必要に応じて増やす）
-CSV_LIST = [
-    "sensor_data_20251120_180935.csv",
-    "sensor_data_20251120_213630.csv",
-    "sensor_data_20251126_133050.csv",
-    "sensor_data_20251126_134706.csv",
-    "sensor_data_20251126_142058.csv",
-    "sensor_data_20251126_143734.csv",
-    "sensor_data_20251126_151424.csv",
-    "sensor_data_20251126_160715.csv",
-    "sensor_data_20251202_230232.csv",
-    "sensor_data_20251203_000616.csv",
-    "sensor_data_20251203_232723.csv",
-    "sensor_data_20251212_003309.csv",
-]
-
-# テスト用にするCSV
-TEST_CSV = "sensor_data_20251203_232723.csv"
-
-
-class SensorDataset(Dataset):
+# =========================
+# realtime_ltsm_line と同じ誤差計算で評価するクラス
+# =========================
+class RealtimeLikeOfflineEvaluator:
     """
-    1つのCSV(=1系列)から教師ありデータを作る。
-    X : [window_size, 4]  (Presence, Movement, MovingRange, BreathingRate)
-    y : [2] (次の HeartRate, 次の BreathingRate)
+    realtime_ltsm_line.py と同じロジック：
+      - WINDOW_SIZE たまったら「次の心拍/呼吸」を予測
+      - 1ステップ前の予測(last_prediction_scaled) と 今回実測(target_scaled) のMSEを anomaly_score とする
+      - anomaly_score > threshold なら異常
     """
-    def __init__(self, df, scaler_x, scaler_y, window_size=10):
-        self.window_size = window_size
+    def __init__(self):
+        self.scaler_x = joblib.load(SCALER_X_PATH)
+        self.scaler_y = joblib.load(SCALER_Y_PATH)
 
-        feature_cols = ["MovingRange", "HeartRate", "BreathingRate"]
-        target_cols = ["HeartRate", "BreathingRate"]
+        self.model = LSTMModel(input_size=3, hidden_size=HIDDEN_SIZE, num_layers=NUM_LAYERS, output_size=2)
+        self.model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
+        self.model.eval()
 
-        features = df[feature_cols].values
-        targets = df[target_cols].values  # shape: [N, 2]
+        with open(THRESHOLD_PATH, "r", encoding="utf-8") as f:
+            self.threshold = float(f.read())
 
-        # ここでは transform だけ行う (fitは main で一度だけ)
-        self.features_scaled = scaler_x.transform(features)
-        self.targets_scaled = scaler_y.transform(targets)
+        self.buffer = deque(maxlen=WINDOW_SIZE)
+        self.last_prediction_scaled = None  # 1ステップ前に予測した「現在」のscaled値（次のstepで評価される）
 
-        self.length = len(df) - window_size - 1
-        if self.length < 0:
-            self.length = 0
+    def step(self, feature_row_original: np.ndarray):
+        """
+        feature_row_original: [MovingRange, HeartRate, BreathingRate] (オリジナルスケール)
+        戻り値:
+          - warmup中は None
+          - それ以外は dict（pred_next と pred_current、anomaly_score など）
+        """
+        self.buffer.append(feature_row_original.astype(float))
+        if len(self.buffer) < WINDOW_SIZE:
+            return None
 
-    def __len__(self):
-        return self.length
+        input_data = np.array(self.buffer)  # [W, 3]
+        input_scaled = self.scaler_x.transform(input_data)
+        input_tensor = torch.tensor(input_scaled, dtype=torch.float32).unsqueeze(0)  # [1, W, 3]
 
-    def __getitem__(self, idx):
-        x = self.features_scaled[idx: idx + self.window_size]          # [window, 4]
-        y = self.targets_scaled[idx + self.window_size]                # [2]
-        return (
-            torch.tensor(x, dtype=torch.float32),
-            torch.tensor(y, dtype=torch.float32),
-        )
+        with torch.no_grad():
+            pred_next_scaled = self.model(input_tensor).numpy()[0]  # [2] scaled
 
+        pred_next_original = self.scaler_y.inverse_transform([pred_next_scaled])[0]  # [2] original
 
-def calc_match_rate(true, pred, tol_ratio=0.10):
+        anomaly_score = None
+        is_anomaly = None
+        pred_current_original = None
+
+        # realtime と同じ：前回の予測と今回実測のズレ（scaled空間MSE）
+        if self.last_prediction_scaled is not None:
+            current_target_original = np.array([feature_row_original[1], feature_row_original[2]]).reshape(1, -1)
+            current_target_scaled = self.scaler_y.transform(current_target_original)[0]  # [2]
+
+            mse = float(np.mean((self.last_prediction_scaled - current_target_scaled) ** 2))
+            anomaly_score = mse
+            is_anomaly = bool(anomaly_score > self.threshold)
+
+            pred_current_original = self.scaler_y.inverse_transform([self.last_prediction_scaled])[0]  # [2]
+
+        # 次stepで評価される「今回の予測」を保存
+        self.last_prediction_scaled = pred_next_scaled
+
+        return {
+            "pred_next_heart": float(pred_next_original[0]),
+            "pred_next_breath": float(pred_next_original[1]),
+            "pred_current_heart": None if pred_current_original is None else float(pred_current_original[0]),
+            "pred_current_breath": None if pred_current_original is None else float(pred_current_original[1]),
+            "anomaly_score": anomaly_score,
+            "is_anomaly": is_anomaly,
+            "threshold": float(self.threshold),
+        }
+
+# ±10%で誤差を許容
+# def match_rate_percent(true_vals: np.ndarray, pred_vals: np.ndarray, tol_ratio: float = 0.10) -> float:
+#     true_vals = np.asarray(true_vals, dtype=float)
+#     pred_vals = np.asarray(pred_vals, dtype=float)
+#     abs_err = np.abs(true_vals - pred_vals)
+#     with np.errstate(divide="ignore", invalid="ignore"):
+#         rel_err = abs_err / np.where(true_vals == 0, 1.0, np.abs(true_vals))
+#     return float((rel_err <= tol_ratio).mean() * 100.0)
+
+# ±3rpmで誤差を許容
+def match_rate_percent(true_vals: np.ndarray, pred_vals: np.ndarray, tol_abs: float = 3.0) -> float:
     """
-    真値の±tol_ratio (例: 0.10=±10%) 以内を「一致」とみなした割合(%)。
+    真値の±tol_abs（例: 3.0）以内を「一致」とみなした割合(%)。
     """
-    true = np.array(true)
-    pred = np.array(pred)
-    abs_err = np.abs(true - pred)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        rel_err = abs_err / np.where(true == 0, 1, np.abs(true))
-    match = (rel_err <= tol_ratio)
-    return match.mean() * 100.0
+    true_vals = np.asarray(true_vals, dtype=float)
+    pred_vals = np.asarray(pred_vals, dtype=float)
+    abs_err = np.abs(true_vals - pred_vals)
+    return float((abs_err <= tol_abs).mean() * 100.0)
 
 
-# ===== メイン処理 =====
+def eval_csv(csv_name: str):
+    csv_path = os.path.join(BASE_DIR, csv_name)
+    if not os.path.exists(csv_path):
+        print(f"警告: 見つかりません: {csv_path}")
+        return
+
+    df = pd.read_csv(csv_path, parse_dates=["Timestamp"]).sort_values("Timestamp").reset_index(drop=True)
+
+    for c in ["Timestamp", *FEATURE_COLS]:
+        if c not in df.columns:
+            raise ValueError(f"{csv_name} に必要列 {c} がありません")
+
+    evaluator = RealtimeLikeOfflineEvaluator()
+    print(f"\n== {csv_name} ==")
+    print(f"Artifacts: {ARTIFACT_DIR}")
+    print(f"Threshold (scaled MSE): {evaluator.threshold:.6f}")
+
+    ts_list = []
+    true_hr_list = []
+    pred_hr_list = []
+    true_br_list = []
+    pred_br_list = []
+    score_list = []
+    flag_list = []
+
+    for _, r in df.iterrows():
+        features = r[FEATURE_COLS].to_numpy(dtype=float)  # [MovingRange, HeartRate, BreathingRate]
+        res = evaluator.step(features)
+        if res is None:
+            continue
+
+        # 評価できるのは「1ステップ前の予測（pred_current_*） vs 今回実測」
+        if res["pred_current_heart"] is None:
+            continue
+
+        ts_list.append(r["Timestamp"])
+        true_hr_list.append(float(r["HeartRate"]))
+        pred_hr_list.append(float(res["pred_current_heart"]))
+        true_br_list.append(float(r["BreathingRate"]))
+        pred_br_list.append(float(res["pred_current_breath"]))
+
+        score = float(res["anomaly_score"]) if res["anomaly_score"] is not None else np.nan
+        is_anom = bool(res["is_anomaly"]) if res["is_anomaly"] is not None else False
+        score_list.append(score)
+        flag_list.append(is_anom)
+
+    if len(true_hr_list) == 0:
+        print("評価サンプルが0です（データが短い/欠損など）。")
+        return
+
+    true_hr = np.array(true_hr_list)
+    pred_hr = np.array(pred_hr_list)
+    true_br = np.array(true_br_list)
+    pred_br = np.array(pred_br_list)
+    scores = np.array(score_list, dtype=float)
+    flags = np.array(flag_list, dtype=bool)
+
+    # 予測精度（オリジナルスケール）
+    heart_mae = float(np.mean(np.abs(true_hr - pred_hr)))
+    heart_rmse = float(np.sqrt(np.mean((true_hr - pred_hr) ** 2)))
+    breath_mae = float(np.mean(np.abs(true_br - pred_br)))
+    breath_rmse = float(np.sqrt(np.mean((true_br - pred_br) ** 2)))
+
+    heart_match10 = match_rate_percent(true_hr, pred_hr, tol_abs=5.0)
+    breath_match10 = match_rate_percent(true_br, pred_br, tol_abs=3.0)
+
+    print(f"Samples evaluated: {len(true_hr)}")
+    print(f"Heart  MAE={heart_mae:.3f}, RMSE={heart_rmse:.3f}, Match(±5rpm)={heart_match10:.1f}%")
+    print(f"Breath MAE={breath_mae:.3f}, RMSE={breath_rmse:.3f}, Match(±3rpm)={breath_match10:.1f}%")
+    print(f"Anomaly rate: {float(flags.mean() * 100):.2f}%")
+
+    # 可視化（必要なければ消してOK）
+    x = np.arange(len(true_hr))
+
+    plt.figure(figsize=(10, 4))
+    plt.plot(x, true_hr, label="True HeartRate")
+    plt.plot(x, pred_hr, label="Pred HeartRate", alpha=0.7)
+    plt.title(f"HeartRate: {csv_name}")
+    plt.xlabel("Sample index")
+    plt.ylabel("HeartRate")
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+    plt.figure(figsize=(10, 4))
+    plt.plot(x, true_br, label="True BreathingRate")
+    plt.plot(x, pred_br, label="Pred BreathingRate", alpha=0.7)
+    plt.title(f"BreathingRate: {csv_name}")
+    plt.xlabel("Sample index")
+    plt.ylabel("BreathingRate")
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+    plt.figure(figsize=(10, 4))
+    plt.plot(scores, label="Anomaly Score (scaled MSE)", color="red")
+    plt.axhline(y=evaluator.threshold, color="green", linestyle="--", label=f"Threshold={evaluator.threshold:.6f}")
+    plt.title(f"Anomaly Score: {csv_name}")
+    plt.xlabel("Sample index")
+    plt.ylabel("Score")
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+
 def main():
-    window_size = 15
-
-    # 1. まず全ての学習用データを1つのDataFrameにまとめて、スケーラーを作る
-    train_df_list = []
-    for name in CSV_LIST:
-        if name == TEST_CSV:
-            continue  # テストは混ぜない
-        path = os.path.join(os.getcwd(), name)
-        if not os.path.exists(path):
-            print(f"警告: {name} が見つかりません。(スケーラー作成時) スキップします。")
-            continue
-        df = pd.read_csv(path, parse_dates=["Timestamp"]).sort_values("Timestamp")
-        train_df_list.append(df)
-
-    if not train_df_list:
-        print("スケーラー作成用のTRAINデータがありません。CSV_LIST / TEST_CSV を確認してください。")
-        return
-
-    full_train_df = pd.concat(train_df_list, ignore_index=True)
-
-    # 全学習データでfitする (これが「正常の基準」になる)
-    scaler_x = MinMaxScaler()
-    scaler_y = MinMaxScaler()
-
-    feature_cols = ["MovingRange", "HeartRate", "BreathingRate"]
-    target_cols = ["HeartRate", "BreathingRate"]
-
-    scaler_x.fit(full_train_df[feature_cols].values)
-    scaler_y.fit(full_train_df[target_cols].values)
-
-    # 2. 各CSVから SensorDataset を作成し、train/test に振り分け
-    train_datasets = []
-    test_datasets = []
-
-    for name in CSV_LIST:
-        path = os.path.join(os.getcwd(), name)
-        if not os.path.exists(path):
-            print(f"警告: {name} が見つかりません。スキップします。")
-            continue
-        df = pd.read_csv(path, parse_dates=["Timestamp"])
-        df = df.sort_values("Timestamp").reset_index(drop=True)
-
-        ds = SensorDataset(df, scaler_x, scaler_y, window_size=window_size)
-        if len(ds) == 0:
-            print(f"警告: {name} の有効サンプルが0です。スキップします。")
-            continue
-
-        if name == TEST_CSV:
-            print(f"{name}: サンプル数 {len(ds)} → TEST 用として使用")
-            test_datasets.append(ds)
-        else:
-            print(f"{name}: サンプル数 {len(ds)} → TRAIN 用として使用")
-            train_datasets.append(ds)
-
-    if not train_datasets:
-        print("TRAIN 用データセットがありません。CSV_LIST / TEST_CSV を確認してください。")
-        return
-    if not test_datasets:
-        print("TEST 用データセットがありません。TEST_CSV を確認してください。")
-        return
-
-    # ConcatDataset で結合
-    train_full = ConcatDataset(train_datasets)
-    test_full = ConcatDataset(test_datasets)
-
-    print(f"TRAIN 合計サンプル数: {len(train_full)}")
-    print(f"TEST  合計サンプル数: {len(test_full)}")
-
-    train_loader = DataLoader(train_full, batch_size=16, shuffle=True)
-    test_loader = DataLoader(test_full, batch_size=16, shuffle=False)
-
-    # --- モデル定義 ---
-    input_size = 3          # 特徴量数
-    hidden_size = 32
-    num_layers = 1
-    output_size = 2         # HeartRate と BreathingRate の2出力
-
-    model = LSTMModel(input_size, hidden_size, num_layers, output_size)
-    criterion = nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-
-    # --- 学習ループ（TRAIN のみで学習）---
-    num_epochs = 100
-    for epoch in range(num_epochs):
-        model.train()
-        running_train_loss = 0.0
-        for x_batch, y_batch in train_loader:
-            optimizer.zero_grad()
-            outputs = model(x_batch)
-            loss = criterion(outputs, y_batch)
-            loss.backward()
-            optimizer.step()
-            running_train_loss += loss.item() * x_batch.size(0)
-
-        epoch_train_loss = running_train_loss / len(train_full)
-        if (epoch + 1) % 10 == 0 or epoch == 0:
-            print(f"Epoch [{epoch+1}/{num_epochs}] Train Loss: {epoch_train_loss:.4f}")
-
-    # === 学習データの誤差分布を確認して閾値を決める ===
-    model.eval()
-    criterion_test = nn.MSELoss(reduction='none')  # 個別サンプルごとの誤差
-    train_losses = []
-    with torch.no_grad():
-        for x_batch, y_batch in train_loader:
-            out = model(x_batch)                       # [batch, 2]
-            loss_batch = criterion_test(out, y_batch)  # [batch, 2]
-            loss_batch = loss_batch.mean(dim=1)        # -> [batch]
-            train_losses.extend(loss_batch.numpy())
-
-    train_losses = np.array(train_losses)
-    train_mean = train_losses.mean()
-    train_std = train_losses.std()
-
-    # --- 閾値の決定論理 ---
-    # 論理1: 3σ法 (正規分布を仮定する場合) -> 今回は不採用
-    threshold_3sigma = float(train_mean + 3 * train_std)
-    
-    # 論理2: 99.7%点 (3σと同じ包含率を、分布によらず実現する場合) -> アカデミックに推奨
-    threshold_997 = np.percentile(train_losses, 99.7)
-
-    # 論理3: 99.0%点 (感度優先、ノイズ除去) -> 実用上推奨
-    threshold_990 = np.percentile(train_losses, 99.0)
-
-    print(f"Threshold (Mean + 3std) : {threshold_3sigma:.4f}")
-    print(f"Threshold (99.7%)       : {threshold_997:.4f}  <-- Recommended for 3-sigma equivalence")
-    print(f"Threshold (99.0%)       : {threshold_990:.4f}  <-- Recommended for high sensitivity")
-
-    # ここで採用する閾値を決定
-    threshold = threshold_990
-
-    # --- ヒストグラムの表示 ---
-    plt.figure(figsize=(10, 6))
-    plt.hist(train_losses, bins=50, alpha=0.7, color='blue', edgecolor='black', label='Train Loss')
-    
-    # 比較用に線を引く
-    plt.axvline(threshold_3sigma, color='green', linestyle=':', label=f'3-sigma: {threshold_3sigma:.4f}')
-    plt.axvline(threshold_997, color='red', linestyle='-', label=f'99.7%: {threshold_997:.4f}')
-    plt.axvline(threshold_990, color='orange', linestyle='--', label=f'99.0%: {threshold_990:.4f}')
-
-    plt.title('Histogram of Training Losses (Threshold Comparison)')
-    plt.xlabel('Loss (MSE)')
-    plt.ylabel('Frequency')
-    plt.legend()
-    plt.grid(axis='y', alpha=0.5)
-    plt.show()
-    # ------------------------------------
-
-    # ===== TEST データ上での予測 vs 実測（スケール空間での一致率）=====
-    model.eval()
-    all_preds = []
-    all_trues = []
-
-    with torch.no_grad():
-        for x_batch, y_batch in test_loader:
-            pred_scaled = model(x_batch)
-            all_preds.append(pred_scaled.numpy())
-            all_trues.append(y_batch.numpy())
-
-    all_preds = np.concatenate(all_preds, axis=0)   # [N_test, 2]
-    all_trues = np.concatenate(all_trues, axis=0)   # [N_test, 2]
-
-    heart_true = all_trues[:, 0]
-    breath_true = all_trues[:, 1]
-    heart_pred = all_preds[:, 0]
-    breath_pred = all_preds[:, 1]
-
-    # 一致率（±10%以内）※スケール空間での相対誤差
-    heart_match = calc_match_rate(heart_true, heart_pred, tol_ratio=0.10)
-    breath_match = calc_match_rate(breath_true, breath_pred, tol_ratio=0.10)
-
-    print("=== Match Rate (±10%以内, LSTM, Multi-file, 指定TEST, GlobalScaler) ===")
-    print(f"HeartRate  match: {heart_match:.1f}%")
-    print(f"Breathing match: {breath_match:.1f}%")
-
-    # グラフ用インデックス（テストサンプルの相対インデックス）
-    time_idx = np.arange(len(heart_true))
-
-    plt.figure(figsize=(10, 4))
-    plt.plot(time_idx, heart_true, label="True HeartRate (scaled, test)")
-    plt.plot(time_idx, heart_pred, label="Pred HeartRate (LSTM, test)", alpha=0.7)
-    plt.xlabel("Sample index (test file only)")
-    plt.ylabel("Scaled HeartRate")
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
-
-    plt.figure(figsize=(10, 4))
-    plt.plot(time_idx, breath_true, label="True BreathingRate (scaled, test)")
-    plt.plot(time_idx, breath_pred, label="Pred BreathingRate (LSTM, test)", alpha=0.7)
-    plt.xlabel("Sample index (test file only)")
-    plt.ylabel("Scaled BreathingRate")
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
-
-    # ===== 異常検知としての評価（テストデータで予測誤差を「異常スコア」として可視化）=====
-    model.eval()
-    anomaly_scores = []
-
-    with torch.no_grad():
-        for x_batch, y_batch in test_loader:
-            outputs = model(x_batch)                           # [batch, 2]
-            loss_batch = criterion_test(outputs, y_batch)      # [batch, 2]
-            loss_batch = loss_batch.mean(dim=1)                # -> [batch] 各サンプルの平均MSE
-            anomaly_scores.extend(loss_batch.numpy().tolist())
-
-    plt.figure(figsize=(10, 6))
-    plt.plot(anomaly_scores, label="Anomaly Score (Prediction Error)", color='red')
-    plt.axhline(y=threshold, color='green', linestyle='--',
-                label=f"Threshold (mean+3std={threshold:.4f})")
-
-    plt.title("Anomaly Detection using LSTM (Prediction Error on TEST_CSV)")
-    plt.xlabel("Test Sample Index")
-    plt.ylabel("Anomaly Score (MSE in scaled space)")
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
+    for csv_name in TEST_CSV_LIST:
+        eval_csv(csv_name)
 
 
 if __name__ == "__main__":

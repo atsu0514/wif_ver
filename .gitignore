@@ -22,6 +22,10 @@ env/
 .env
 linetool/.env
 
+*.pkl
+*.pth
+*.txt
+*.json
 # -------------------------
 # データ・ログファイル
 # -------------------------
@@ -36,3 +40,4 @@ catboost_info/
 # -------------------------
 Thumbs.db
 .DS_Store
+catboost_info/catboost_training.json
