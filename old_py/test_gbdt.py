@@ -1,4 +1,4 @@
-import os
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -32,19 +32,34 @@ TARGET_COLS = ["HeartRate", "BreathingRate"]
 # =========================
 # 成果物の解決（latest.txt）
 # =========================
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-MODELS_DIR = os.path.join(BASE_DIR, "GBDT")
-LATEST_PATH = os.path.join(MODELS_DIR, "latest.txt")
+BASE_DIR = Path(__file__).resolve().parents[1]
+MODELS_DIR = BASE_DIR / "GBDT"
+DATA_DIR = BASE_DIR / "cleaned_data"
+LATEST_PATH = MODELS_DIR / "latest.txt"
 
 
-def _resolve_artifact_dir() -> str:
-    if not os.path.exists(LATEST_PATH):
+def resolve_csv_path(name: str) -> Path | None:
+    p = Path(name)
+    if p.is_absolute() and p.exists():
+        return p
+
+    candidates = [
+        DATA_DIR / name,   # cleaned_data優先
+        BASE_DIR / name,   # ルート直下も一応見る
+        Path.cwd() / name  # 実行場所互換
+    ]
+    for c in candidates:
+        if c.exists():
+            return c
+    return None
+
+
+def _resolve_artifact_dir() -> Path:
+    if not LATEST_PATH.exists():
         raise FileNotFoundError(f"latest.txt が見つかりません: {LATEST_PATH}")
-    with open(LATEST_PATH, "r", encoding="utf-8") as f:
-        run_id = f.read().strip()
-
-    d = os.path.join(MODELS_DIR, run_id)
-    if not os.path.isdir(d):
+    run_id = LATEST_PATH.read_text(encoding="utf-8").strip()
+    d = MODELS_DIR / run_id
+    if not d.is_dir():
         raise FileNotFoundError(f"artifact_dir not found: {d}")
     return d
 
@@ -71,27 +86,26 @@ def match_rate_abs(true_vals: np.ndarray, pred_vals: np.ndarray, tol_abs: float)
     return float((abs_err <= tol_abs).mean() * 100.0)
 
 
-def _resolve_model_name(artifact_dir: str) -> str:
+def _resolve_model_name(artifact_dir: Path) -> str:
     if MODEL_NAME is not None:
         return MODEL_NAME
 
-    meta_path = os.path.join(artifact_dir, "meta.txt")
-    if os.path.exists(meta_path):
-        with open(meta_path, "r", encoding="utf-8") as f:
-            for line in f:
-                if line.startswith("model="):
-                    return line.strip().split("=", 1)[1]
+    meta_path = artifact_dir / "meta.txt"
+    if meta_path.exists():
+        for line in meta_path.read_text(encoding="utf-8").splitlines():
+            if line.startswith("model="):
+                return line.strip().split("=", 1)[1]
 
     raise RuntimeError("modelが特定できません。MODEL_NAME を設定するか、meta.txt に model= を入れてください。")
 
 
-def eval_csv(artifact_dir: str, model_name: str, model, scaler_x, scaler_y, threshold: float, csv_name: str):
-    csv_path = os.path.join(BASE_DIR, csv_name)
-    if not os.path.exists(csv_path):
-        print(f"警告: 見つかりません: {csv_path}")
+def eval_csv(artifact_dir: Path, model_name: str, model, scaler_x, scaler_y, threshold: float, csv_name: str):
+    csv_path = resolve_csv_path(csv_name)
+    if csv_path is None:
+        print(f"警告: 見つかりません: {csv_name}")
         return
 
-    df = pd.read_csv(csv_path, parse_dates=["Timestamp"]).sort_values("Timestamp").reset_index(drop=True)
+    df = pd.read_csv(str(csv_path), parse_dates=["Timestamp"]).sort_values("Timestamp").reset_index(drop=True)
 
     for c in ["Timestamp", *FEATURE_COLS]:
         if c not in df.columns:
@@ -163,16 +177,15 @@ def main():
     artifact_dir = _resolve_artifact_dir()
     model_name = _resolve_model_name(artifact_dir)
 
-    model_path = os.path.join(artifact_dir, f"{model_name}_model.pkl")
-    scaler_x_path = os.path.join(artifact_dir, "scaler_x.pkl")
-    scaler_y_path = os.path.join(artifact_dir, "scaler_y.pkl")
-    threshold_path = os.path.join(artifact_dir, "threshold.txt")
+    model_path = artifact_dir / f"{model_name}_model.pkl"
+    scaler_x_path = artifact_dir / "scaler_x.pkl"
+    scaler_y_path = artifact_dir / "scaler_y.pkl"
+    threshold_path = artifact_dir / "threshold.txt"
 
-    model = joblib.load(model_path)
-    scaler_x = joblib.load(scaler_x_path)
-    scaler_y = joblib.load(scaler_y_path)
-    with open(threshold_path, "r", encoding="utf-8") as f:
-        threshold = float(f.read())
+    model = joblib.load(str(model_path))
+    scaler_x = joblib.load(str(scaler_x_path))
+    scaler_y = joblib.load(str(scaler_y_path))
+    threshold = float(threshold_path.read_text(encoding="utf-8"))
 
     for csv_name in TEST_CSV_LIST:
         eval_csv(artifact_dir, model_name, model, scaler_x, scaler_y, threshold, csv_name)

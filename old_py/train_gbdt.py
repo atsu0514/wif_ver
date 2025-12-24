@@ -1,6 +1,7 @@
 import os
 import argparse
 import datetime
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -11,26 +12,37 @@ from sklearn.multioutput import MultiOutputRegressor
 # ===== 設定（必要なら編集）=====
 WINDOW_SIZE = 15
 CSV_LIST = [
-    "sensor_data_20251120_180935.csv",
-    "sensor_data_20251120_213630.csv",
-    "sensor_data_20251126_133050.csv",
-    "sensor_data_20251126_134706.csv",
-    "sensor_data_20251126_142058.csv",
-    "sensor_data_20251126_143734.csv",
-    "sensor_data_20251126_151424.csv",
-    "sensor_data_20251126_160715.csv",
-    "sensor_data_20251202_230232.csv",
-    "sensor_data_20251203_000616.csv",
-    "sensor_data_20251203_232723.csv",
+    "cleaned_sensor_data_20251120_213630.csv",
+    "cleaned_sensor_data_20251126_134706.csv",
+    "cleaned_sensor_data_20251203_000616.csv",
+    "cleaned_sensor_data_20251203_232723.csv",
+    "cleaned_sensor_data_20251211_145537.csv",
+    "cleaned_sensor_data_20251212_003309.csv",
+    "cleaned_sensor_data_20251213_004316.csv",
+    "cleaned_sensor_data_20251213_160339.csv",
 ]
-TEST_CSV = "sensor_data_20251203_232723.csv"
+TEST_CSV = "cleaned_sensor_data_20251214_001933.csv"
 
 FEATURE_COLS = ["MovingRange", "HeartRate", "BreathingRate"]
 TARGET_COLS = ["HeartRate", "BreathingRate"]
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-MODELS_DIR = os.path.join(BASE_DIR, "GBDT")  # 保存先フォルダ
-LATEST_PATH = os.path.join(MODELS_DIR, "latest.txt")
+BASE_DIR = Path(__file__).resolve().parents[1]
+MODELS_DIR = BASE_DIR / "GBDT"  # 保存先フォルダ
+DATA_DIR = BASE_DIR / "cleaned_data"
+LATEST_PATH = MODELS_DIR / "latest.txt"
+
+
+def resolve_csv_path(name: str) -> Path | None:
+    candidates = [
+        DATA_DIR / name,   # cleaned_data優先
+        BASE_DIR / name,   # ルート直下も一応見る
+        Path.cwd() / name  # 実行場所互換
+    ]
+    for p in candidates:
+        if p.exists():
+            return p
+    return None
 
 
 def build_supervised_xy(df: pd.DataFrame, window_size: int):
@@ -103,11 +115,11 @@ def main():
     for name in CSV_LIST:
         if name == TEST_CSV:
             continue
-        path = os.path.join(BASE_DIR, name)
-        if not os.path.exists(path):
+        path = resolve_csv_path(name)
+        if path is None:
             print(f"警告: {name} が見つかりません。スキップします。")
             continue
-        df = pd.read_csv(path, parse_dates=["Timestamp"]).sort_values("Timestamp").reset_index(drop=True)
+        df = pd.read_csv(str(path), parse_dates=["Timestamp"]).sort_values("Timestamp").reset_index(drop=True)
         train_df_list.append(df)
 
     if not train_df_list:
@@ -139,20 +151,20 @@ def main():
 
     # 6) 成果物保存（run_idディレクトリに保存）
     run_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    artifact_dir = os.path.join(MODELS_DIR, run_id)
-    os.makedirs(artifact_dir, exist_ok=True)
+    artifact_dir = MODELS_DIR / run_id
+    artifact_dir.mkdir(parents=True, exist_ok=True)
 
-    joblib.dump(model, os.path.join(artifact_dir, f"{args.model}_model.pkl"))
-    joblib.dump(scaler_x, os.path.join(artifact_dir, "scaler_x.pkl"))
-    joblib.dump(scaler_y, os.path.join(artifact_dir, "scaler_y.pkl"))
-    with open(os.path.join(artifact_dir, "threshold.txt"), "w", encoding="utf-8") as f:
-        f.write(str(threshold))
-    with open(os.path.join(artifact_dir, "meta.txt"), "w", encoding="utf-8") as f:
-        f.write(f"model={args.model}\nwindow_size={WINDOW_SIZE}\nfeatures={FEATURE_COLS}\n")
+    joblib.dump(model, str(artifact_dir / f"{args.model}_model.pkl"))
+    joblib.dump(scaler_x, str(artifact_dir / "scaler_x.pkl"))
+    joblib.dump(scaler_y, str(artifact_dir / "scaler_y.pkl"))
+    (artifact_dir / "threshold.txt").write_text(str(threshold), encoding="utf-8")
+    (artifact_dir / "meta.txt").write_text(
+        f"model={args.model}\nwindow_size={WINDOW_SIZE}\nfeatures={FEATURE_COLS}\n",
+        encoding="utf-8",
+    )
 
-    os.makedirs(MODELS_DIR, exist_ok=True)
-    with open(LATEST_PATH, "w", encoding="utf-8") as f:
-        f.write(run_id)
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    LATEST_PATH.write_text(run_id, encoding="utf-8")
 
     print(f"Saved artifacts to: {artifact_dir}")
     print(f"Marked latest: {run_id}")

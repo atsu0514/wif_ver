@@ -1,5 +1,6 @@
-import os
+from pathlib import Path
 from collections import deque
+import copy
 
 import numpy as np
 import pandas as pd
@@ -18,7 +19,8 @@ NUM_LAYERS = 1
 
 # テストしたいCSV（1つだけでもOK）
 TEST_CSV_LIST = [
-    "sensor_data_20251203_232723.csv",
+    "cleaned_sensor_data_20251214_001933.csv",
+    
 ]
 
 FEATURE_COLS = ["MovingRange", "HeartRate", "BreathingRate"]   # train/realtime と同じ
@@ -28,27 +30,43 @@ TARGET_COLS = ["HeartRate", "BreathingRate"]
 # =========================
 # モデル成果物の解決（realtime と同じ）
 # =========================
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))  # プロジェクトルート
-MODELS_DIR = os.path.join(BASE_DIR, "models")
-LATEST_PATH = os.path.join(MODELS_DIR, "latest.txt")
+BASE_DIR = Path(__file__).resolve().parents[1]  # プロジェクトルート
+MODELS_DIR = BASE_DIR / "models"
+DATA_DIR = BASE_DIR / "cleaned_data"
+LATEST_PATH = MODELS_DIR / "latest.txt"
 
 
-def _resolve_artifact_dir() -> str:
-    if not os.path.exists(LATEST_PATH):
+def resolve_csv_path(name: str) -> Path | None:
+    p = Path(name)
+    if p.is_absolute() and p.exists():
+        return p
+
+    candidates = [
+        DATA_DIR / name,   # cleaned_data優先
+        BASE_DIR / name,   # ルート直下も一応見る
+        Path.cwd() / name  # 実行場所互換
+    ]
+    for c in candidates:
+        if c.exists():
+            return c
+    return None
+
+
+def _resolve_artifact_dir() -> Path:
+    if not LATEST_PATH.exists():
         raise FileNotFoundError(f"latest.txt が見つかりません: {LATEST_PATH}")
-    with open(LATEST_PATH, "r", encoding="utf-8") as f:
-        run_id = f.read().strip()
-    artifact_dir = os.path.join(MODELS_DIR, run_id)
-    if not os.path.isdir(artifact_dir):
+    run_id = LATEST_PATH.read_text(encoding="utf-8").strip()
+    artifact_dir = MODELS_DIR / run_id
+    if not artifact_dir.is_dir():
         raise FileNotFoundError(f"artifact_dir が見つかりません: {artifact_dir}")
     return artifact_dir
 
 
 ARTIFACT_DIR = _resolve_artifact_dir()
-MODEL_PATH = os.path.join(ARTIFACT_DIR, "lstm_model.pth")
-SCALER_X_PATH = os.path.join(ARTIFACT_DIR, "scaler_x.pkl")  # pkl（質問のpkiはたぶんtypo）
-SCALER_Y_PATH = os.path.join(ARTIFACT_DIR, "scaler_y.pkl")
-THRESHOLD_PATH = os.path.join(ARTIFACT_DIR, "threshold.txt")
+MODEL_PATH = ARTIFACT_DIR / "lstm_model.pth"
+SCALER_X_PATH = ARTIFACT_DIR / "scaler_x.pkl"  # pkl（質問のpkiはたぶんtypo）
+SCALER_Y_PATH = ARTIFACT_DIR / "scaler_y.pkl"
+THRESHOLD_PATH = ARTIFACT_DIR / "threshold.txt"
 
 
 # =========================
@@ -83,15 +101,14 @@ class RealtimeLikeOfflineEvaluator:
       - anomaly_score > threshold なら異常
     """
     def __init__(self):
-        self.scaler_x = joblib.load(SCALER_X_PATH)
-        self.scaler_y = joblib.load(SCALER_Y_PATH)
+        self.scaler_x = joblib.load(str(SCALER_X_PATH))
+        self.scaler_y = joblib.load(str(SCALER_Y_PATH))
 
         self.model = LSTMModel(input_size=3, hidden_size=HIDDEN_SIZE, num_layers=NUM_LAYERS, output_size=2)
-        self.model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
+        self.model.load_state_dict(torch.load(str(MODEL_PATH), map_location="cpu"))
         self.model.eval()
 
-        with open(THRESHOLD_PATH, "r", encoding="utf-8") as f:
-            self.threshold = float(f.read())
+        self.threshold = float(THRESHOLD_PATH.read_text(encoding="utf-8"))
 
         self.buffer = deque(maxlen=WINDOW_SIZE)
         self.last_prediction_scaled = None  # 1ステップ前に予測した「現在」のscaled値（次のstepで評価される）
@@ -165,12 +182,12 @@ def match_rate_percent(true_vals: np.ndarray, pred_vals: np.ndarray, tol_abs: fl
 
 
 def eval_csv(csv_name: str):
-    csv_path = os.path.join(BASE_DIR, csv_name)
-    if not os.path.exists(csv_path):
-        print(f"警告: 見つかりません: {csv_path}")
+    csv_path = resolve_csv_path(csv_name)
+    if csv_path is None:
+        print(f"警告: 見つかりません: {csv_name}")
         return
 
-    df = pd.read_csv(csv_path, parse_dates=["Timestamp"]).sort_values("Timestamp").reset_index(drop=True)
+    df = pd.read_csv(str(csv_path), parse_dates=["Timestamp"]).sort_values("Timestamp").reset_index(drop=True)
 
     for c in ["Timestamp", *FEATURE_COLS]:
         if c not in df.columns:
@@ -227,12 +244,12 @@ def eval_csv(csv_name: str):
     breath_mae = float(np.mean(np.abs(true_br - pred_br)))
     breath_rmse = float(np.sqrt(np.mean((true_br - pred_br) ** 2)))
 
-    heart_match10 = match_rate_percent(true_hr, pred_hr, tol_abs=5.0)
-    breath_match10 = match_rate_percent(true_br, pred_br, tol_abs=3.0)
+    heart_match10 = match_rate_percent(true_hr, pred_hr, tol_abs=1.5)
+    breath_match10 = match_rate_percent(true_br, pred_br, tol_abs=1.5)
 
     print(f"Samples evaluated: {len(true_hr)}")
-    print(f"Heart  MAE={heart_mae:.3f}, RMSE={heart_rmse:.3f}, Match(±5rpm)={heart_match10:.1f}%")
-    print(f"Breath MAE={breath_mae:.3f}, RMSE={breath_rmse:.3f}, Match(±3rpm)={breath_match10:.1f}%")
+    print(f"Heart  MAE={heart_mae:.3f}, RMSE={heart_rmse:.3f}, Match(±1.5rpm)={heart_match10:.1f}%")
+    print(f"Breath MAE={breath_mae:.3f}, RMSE={breath_rmse:.3f}, Match(±1.5rpm)={breath_match10:.1f}%")
     print(f"Anomaly rate: {float(flags.mean() * 100):.2f}%")
 
     # 可視化（必要なければ消してOK）

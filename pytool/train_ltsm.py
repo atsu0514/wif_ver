@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import torch
@@ -13,34 +14,46 @@ WINDOW_SIZE = 15
 HIDDEN_SIZE = 32
 NUM_LAYERS = 1
 CSV_LIST = [
-    "sensor_data_20251120_180935.csv",
-    "sensor_data_20251120_213630.csv",
-    "sensor_data_20251126_133050.csv",
-    "sensor_data_20251126_134706.csv",
-    "sensor_data_20251126_142058.csv",
-    "sensor_data_20251126_143734.csv",
-    "sensor_data_20251126_151424.csv",
-    "sensor_data_20251126_160715.csv",
-    "sensor_data_20251202_230232.csv",
-    "sensor_data_20251203_000616.csv",
-    "sensor_data_20251203_232723.csv",
+    "cleaned_sensor_data_20251120_213630.csv",
+    "cleaned_sensor_data_20251126_134706.csv",
+    "cleaned_sensor_data_20251203_000616.csv",
+    "cleaned_sensor_data_20251203_232723.csv",
+    "cleaned_sensor_data_20251211_145537.csv",
+    "cleaned_sensor_data_20251212_003309.csv",
+    "cleaned_sensor_data_20251213_004316.csv",
+    "cleaned_sensor_data_20251213_160339.csv",
+    "cleaned_sensor_data_20251218_235445.csv",
+    "cleaned_sensor_data_20251219_235637.csv",
+    "cleaned_sensor_data_20251222_214718.csv",
+    "cleaned_sensor_data_20251224_001236.csv",
 ]
-# テスト用にするCSV（学習には含めないが、閾値決定の確認用などに使う）
-TEST_CSV = "sensor_data_20251203_232723.csv"
+TEST_CSV = "cleaned_sensor_data_20251214_001933.csv"
 
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))  # プロジェクトルート
-MODELS_DIR = os.path.join(BASE_DIR, "models")
+BASE_DIR = Path(__file__).resolve().parents[1]  # プロジェクトルート
+MODELS_DIR = BASE_DIR / "models"
+DATA_DIR = BASE_DIR / "cleaned_data"
 
 RUN_ID = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-ARTIFACT_DIR = os.path.join(MODELS_DIR, RUN_ID)
-os.makedirs(ARTIFACT_DIR, exist_ok=True)
+ARTIFACT_DIR = MODELS_DIR / RUN_ID
+ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
 
-MODEL_PATH = os.path.join(ARTIFACT_DIR, "lstm_model.pth")
-SCALER_X_PATH = os.path.join(ARTIFACT_DIR, "scaler_x.pkl")
-SCALER_Y_PATH = os.path.join(ARTIFACT_DIR, "scaler_y.pkl")
-THRESHOLD_PATH = os.path.join(ARTIFACT_DIR, "threshold.txt")
+MODEL_PATH = ARTIFACT_DIR / "lstm_model.pth"
+SCALER_X_PATH = ARTIFACT_DIR / "scaler_x.pkl"
+SCALER_Y_PATH = ARTIFACT_DIR / "scaler_y.pkl"
+THRESHOLD_PATH = ARTIFACT_DIR / "threshold.txt"
 
-LATEST_PATH = os.path.join(MODELS_DIR, "latest.txt")
+LATEST_PATH = MODELS_DIR / "latest.txt"
+
+def resolve_csv_path(name: str) -> Path | None:
+    candidates = [
+        DATA_DIR / name,   # cleaned_data優先
+        BASE_DIR / name,   # ルート直下も一応見る
+        Path.cwd() / name  # 実行場所互換
+    ]
+    for p in candidates:
+        if p.exists():
+            return p
+    return None
 
 class LSTMModel(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, output_size):
@@ -79,16 +92,34 @@ class SensorDataset(Dataset):
         y = self.targets_scaled[idx + self.window_size]
         return torch.tensor(x, dtype=torch.float32), torch.tensor(y, dtype=torch.float32)
 
+def evaluate_loss(model, data_loader, criterion):
+    model.eval()
+    total = 0.0
+    n = 0
+    with torch.no_grad():
+        for x_batch, y_batch in data_loader:
+            out = model(x_batch)
+            loss = criterion(out, y_batch)
+            bs = x_batch.size(0)
+            total += loss.item() * bs
+            n += bs
+    return total / max(n, 1)
+
 def main():
     # 1. データ読み込みとスケーラー作成
     train_df_list = []
     for name in CSV_LIST:
         if name == TEST_CSV: continue
-        path = os.path.join(os.getcwd(), name)
-        if os.path.exists(path):
-            df = pd.read_csv(path, parse_dates=["Timestamp"]).sort_values("Timestamp")
+        path = resolve_csv_path(name)
+        if path is not None:
+            df = pd.read_csv(str(path), parse_dates=["Timestamp"]).sort_values("Timestamp").reset_index(drop=True)
             train_df_list.append(df)
     
+    if not train_df_list:
+        raise RuntimeError(
+            "学習用CSVが見つかりません。"
+            " cleaned_data/ 配下にCSVがあるか、CSV_LISTの名前が正しいか確認してください。"
+        )
     full_train_df = pd.concat(train_df_list, ignore_index=True)
     
     scaler_x = MinMaxScaler()
@@ -102,17 +133,17 @@ def main():
     scaler_y.fit(full_train_df[target_cols].values)
     
     # スケーラー保存
-    joblib.dump(scaler_x, SCALER_X_PATH)
-    joblib.dump(scaler_y, SCALER_Y_PATH)
+    joblib.dump(scaler_x, str(SCALER_X_PATH))
+    joblib.dump(scaler_y, str(SCALER_Y_PATH))
     print("Scalers saved.")
 
     # 2. Dataset作成
     train_datasets = []
     for name in CSV_LIST:
         if name == TEST_CSV: continue
-        path = os.path.join(os.getcwd(), name)
-        if os.path.exists(path):
-            df = pd.read_csv(path, parse_dates=["Timestamp"]).sort_values("Timestamp").reset_index(drop=True)
+        path = resolve_csv_path(name)
+        if path:
+            df = pd.read_csv(str(path), parse_dates=["Timestamp"]).sort_values("Timestamp").reset_index(drop=True)
             ds = SensorDataset(df, scaler_x, scaler_y, window_size=WINDOW_SIZE)
             if len(ds) > 0:
                 train_datasets.append(ds)
@@ -120,6 +151,15 @@ def main():
     train_full = ConcatDataset(train_datasets)
     train_loader = DataLoader(train_full, batch_size=16, shuffle=True)
     
+    # --- 追加: 検証データ（TEST_CSV） ---
+    val_path = resolve_csv_path(TEST_CSV)
+    if val_path is None:
+        raise RuntimeError(f"検証用CSVが見つかりません: {TEST_CSV}")
+
+    val_df = pd.read_csv(str(val_path), parse_dates=["Timestamp"]).sort_values("Timestamp").reset_index(drop=True)
+    val_ds = SensorDataset(val_df, scaler_x, scaler_y, window_size=WINDOW_SIZE)
+    val_loader = DataLoader(val_ds, batch_size=16, shuffle=False)
+
     # 3. モデル学習
     # ★修正: input_size を 5 -> 3 に変更
     model = LSTMModel(input_size=3, hidden_size=HIDDEN_SIZE, num_layers=NUM_LAYERS, output_size=2)
@@ -139,11 +179,14 @@ def main():
             optimizer.step()
             running_loss += loss.item() * x_batch.size(0)
         
-        if (epoch+1) % 10 == 0:
-            print(f"Epoch {epoch+1}/{num_epochs}, Loss: {running_loss/len(train_full):.4f}")
+        train_loss = running_loss / len(train_full)
+        val_loss = evaluate_loss(model, val_loader, criterion)
+
+        if (epoch+1) % 1 == 0:
+            print(f"Epoch {epoch+1}/{num_epochs}, TrainLoss={train_loss:.4f}, ValLoss={val_loss:.4f}")
 
     # モデル保存
-    torch.save(model.state_dict(), MODEL_PATH)
+    torch.save(model.state_dict(), str(MODEL_PATH))
     print(f"Model saved to {MODEL_PATH}")
 
     # 4. 閾値決定
@@ -163,14 +206,12 @@ def main():
     #threshold = train_losses.mean() + 3 * train_losses.std()
 
     
-    with open(THRESHOLD_PATH, "w") as f:
-        f.write(str(threshold))
+    THRESHOLD_PATH.write_text(str(threshold), encoding="utf-8")
     print(f"Threshold saved: {threshold:.4f}")
 
     # この学習を「最新」として記録
-    os.makedirs(MODELS_DIR, exist_ok=True)
-    with open(LATEST_PATH, "w") as f:
-        f.write(RUN_ID)
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    LATEST_PATH.write_text(RUN_ID, encoding="utf-8")
     print(f"Marked this run as latest: {RUN_ID}")
 
 if __name__ == "__main__":
