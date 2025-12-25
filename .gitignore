@@ -3,3 +3,41 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+
+# -------------------------
+# Python 関連
+# -------------------------
+# コンパイル済みファイル
+__pycache__/
+*.py[cod]
+
+# 仮想環境 (もし作成していれば)
+venv/
+.venv/
+env/
+
+# -------------------------
+# 秘密情報 (絶対にコミットしない！)
+# -------------------------
+.env
+linetool/.env
+
+*.pkl
+*.pth
+*.txt
+*.json
+# -------------------------
+# データ・ログファイル
+# -------------------------
+# センサーデータのCSVログ
+*.csv
+
+# CatBoost (機械学習) のログフォルダ
+catboost_info/
+
+# -------------------------
+# OS 固有ファイル
+# -------------------------
+Thumbs.db
+.DS_Store
+catboost_info/catboost_training.json

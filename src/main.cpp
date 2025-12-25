@@ -83,7 +83,7 @@ void connectToWiFi()
 }
  
 // ★修正: 引数でデータを受け取り、内部でchar配列を使って高速送信する形に変更（fall/dwell を追加）
-void sendDataOverWiFi(int presence, int movement, int range, int breath, int heart, int falldata, int dwellstatus)
+void sendDataOverWiFi(int presence, int movement, int range, int breath, int heart/*, int falldata, int dwellstatus*/)
 {
     if (!wifiConnected)
     {
@@ -107,7 +107,7 @@ void sendDataOverWiFi(int presence, int movement, int range, int breath, int hea
     // ★最適化: Stringクラスを使わず、char配列(バッファ)を使って送信
     // メモリ確保・解放のオーバーヘッドがなくなり高速化
     char buffer[128];
-    snprintf(buffer, sizeof(buffer), "%d,%d,%d,%d,%d,%d,%d\n", presence, movement, range, breath, heart, falldata, dwellstatus);
+    snprintf(buffer, sizeof(buffer), "%d,%d,%d,%d,%d\n", presence, movement, range, breath, heart/*, falldata, dwellstatus*/);
     
     client.print(buffer);
 }
@@ -192,12 +192,12 @@ void loop() {
   int range = hu.smHumanData(hu.eHumanMovingRange);           // [2] Range
   int breath = hu.getBreatheValue();                          // [3] Breath
   int heart = hu.getHeartRate();                              // [4] Heart
-  int falldata = hu.getFallData(hu.eFallState);               // [5] Fall status
-  int dwellstatus = hu.getFallData(hu.estaticResidencyState); // [6] Dwell status            
+  //int falldata = hu.getFallData(hu.eFallState);               // [5] Fall status
+  //int dwellstatus = hu.getFallData(hu.estaticResidencyState); // [6] Dwell status            
 
 
   // ★修正: 最適化した送信関数に数値を直接渡す
-  sendDataOverWiFi(presence, movement, range, breath, heart, falldata, dwellstatus);
+  sendDataOverWiFi(presence, movement, range, breath, heart /*falldata, dwellstatus*/);
  
   // 通信安定化のため、ごく短い待機時間を入れる
   delay(5);
