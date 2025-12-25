@@ -8,6 +8,7 @@ from collections import deque
 import numpy as np
 import japanize_matplotlib
 import csv
+
  
 class C1001RealTimePlot:
     def __init__(self, host="172.20.10.2", port=7007, max_points=100):

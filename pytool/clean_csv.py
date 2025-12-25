@@ -6,7 +6,6 @@ import glob
 INPUT_DIR = os.path.dirname(os.path.dirname(__file__))  # プロジェクトルート
 OUTPUT_DIR = os.path.join(INPUT_DIR, "cleaned_data")    # 出力先フォルダ
 THRESHOLD_HEART_RATE = 100
-SKIP_POINTS = 4  # 異常値の後にスキップするデータ数
 
 def clean_csv_files():
     # 出力フォルダ作成
@@ -32,24 +31,12 @@ def clean_csv_files():
             valid_indices = []
             skip_counter = 0
             
-            for i in range(len(df)):
-                heart_rate = df.loc[i, "HeartRate"]
-                
-                # 1. 異常値検知 (HeartRate > 100)
-                if heart_rate > THRESHOLD_HEART_RATE:
-                    skip_counter = SKIP_POINTS  # カウンタをリセット（ここから4つ飛ばす）
-                    continue  # この行は削除
-                
-                # 2. 復帰待ち期間 (直後の4ポイント)
-                if skip_counter > 0:
-                    skip_counter -= 1
-                    continue  # この行も削除
-                
-                # 3. 正常データ
-                valid_indices.append(i)
-            
-            # 新しいDataFrame作成
-            cleaned_df = df.loc[valid_indices].reset_index(drop=True)
+            # HeartRate を「削除せず上限100でキープ」
+            df["HeartRate"] = pd.to_numeric(df["HeartRate"], errors="coerce")
+            clamped_count = int((df["HeartRate"] > THRESHOLD_HEART_RATE).sum())
+            df["HeartRate"] = df["HeartRate"].clip(upper=THRESHOLD_HEART_RATE)
+
+            cleaned_df = df  # 行は削除しない
             
             # 保存
             output_path = os.path.join(OUTPUT_DIR, f"cleaned_{file_name}")
