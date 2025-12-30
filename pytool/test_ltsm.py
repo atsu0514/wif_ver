@@ -10,26 +10,18 @@ import joblib
 import matplotlib.pyplot as plt
 
 
-# =========================
-# 設定（必要ならここだけ編集）
-# =========================
 WINDOW_SIZE = 15
 HIDDEN_SIZE = 32
 NUM_LAYERS = 1
 
-# テストしたいCSV（1つだけでもOK）
 TEST_CSV_LIST = [
-    "cleaned_sensor_data_20251214_001933.csv",
-    
+    "cleaned_sensor_data_20251224_164339.csv",
 ]
 
-FEATURE_COLS = ["MovingRange", "HeartRate", "BreathingRate"]   # train/realtime と同じ
+FEATURE_COLS = ["MovingRange", "HeartRate", "BreathingRate"]  
 TARGET_COLS = ["HeartRate", "BreathingRate"]
 
 
-# =========================
-# モデル成果物の解決（realtime と同じ）
-# =========================
 BASE_DIR = Path(__file__).resolve().parents[1]  # プロジェクトルート
 MODELS_DIR = BASE_DIR / "models"
 DATA_DIR = BASE_DIR / "cleaned_data"
@@ -64,14 +56,12 @@ def _resolve_artifact_dir() -> Path:
 
 ARTIFACT_DIR = _resolve_artifact_dir()
 MODEL_PATH = ARTIFACT_DIR / "lstm_model.pth"
-SCALER_X_PATH = ARTIFACT_DIR / "scaler_x.pkl"  # pkl（質問のpkiはたぶんtypo）
+SCALER_X_PATH = ARTIFACT_DIR / "scaler_x.pkl"  
 SCALER_Y_PATH = ARTIFACT_DIR / "scaler_y.pkl"
 THRESHOLD_PATH = ARTIFACT_DIR / "threshold.txt"
 
 
-# =========================
-# モデル定義（train/realtime と同じ構造）
-# =========================
+# モデル定義
 class LSTMModel(nn.Module):
     def __init__(self, input_size: int, hidden_size: int, num_layers: int, output_size: int):
         super().__init__()
@@ -89,10 +79,7 @@ class LSTMModel(nn.Module):
         out = self.fc(out)
         return out
 
-
-# =========================
 # realtime_ltsm_line と同じ誤差計算で評価するクラス
-# =========================
 class RealtimeLikeOfflineEvaluator:
     """
     realtime_ltsm_line.py と同じロジック：
@@ -160,15 +147,6 @@ class RealtimeLikeOfflineEvaluator:
             "is_anomaly": is_anomaly,
             "threshold": float(self.threshold),
         }
-
-# ±10%で誤差を許容
-# def match_rate_percent(true_vals: np.ndarray, pred_vals: np.ndarray, tol_ratio: float = 0.10) -> float:
-#     true_vals = np.asarray(true_vals, dtype=float)
-#     pred_vals = np.asarray(pred_vals, dtype=float)
-#     abs_err = np.abs(true_vals - pred_vals)
-#     with np.errstate(divide="ignore", invalid="ignore"):
-#         rel_err = abs_err / np.where(true_vals == 0, 1.0, np.abs(true_vals))
-#     return float((rel_err <= tol_ratio).mean() * 100.0)
 
 # ±3rpmで誤差を許容
 def match_rate_percent(true_vals: np.ndarray, pred_vals: np.ndarray, tol_abs: float = 3.0) -> float:

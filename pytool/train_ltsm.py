@@ -70,10 +70,10 @@ class LSTMModel(nn.Module):
         out = self.fc(out)
         return out
 
+#データからltsmに入力するデータとその次の時刻の教師データを返すクラス
 class SensorDataset(Dataset):
     def __init__(self, df, scaler_x, scaler_y, window_size=10):
         self.window_size = window_size
-        # ★修正: 特徴量を3つに変更 (Presence, Movement を削除)
         feature_cols = ["MovingRange", "HeartRate", "BreathingRate"]
         target_cols = ["HeartRate", "BreathingRate"]
         features = df[feature_cols].values
@@ -81,17 +81,20 @@ class SensorDataset(Dataset):
         
         self.features_scaled = scaler_x.transform(features)
         self.targets_scaled = scaler_y.transform(targets)
-        self.length = len(df) - window_size - 1
+        #要素数の取得(データ数からwindow_sizeを減算して何回学習できるかの数を求める)
+        self.length = len(df) - window_size
         if self.length < 0: self.length = 0
 
     def __len__(self):
         return self.length
-
+    
+    #xは現在の学習サンプル、yは次の学習サンプルを定義している
     def __getitem__(self, idx):
         x = self.features_scaled[idx: idx + self.window_size]
         y = self.targets_scaled[idx + self.window_size]
         return torch.tensor(x, dtype=torch.float32), torch.tensor(y, dtype=torch.float32)
 
+#valLossの計算
 def evaluate_loss(model, data_loader, criterion):
     model.eval()
     total = 0.0
@@ -120,16 +123,18 @@ def main():
             "学習用CSVが見つかりません。"
             " cleaned_data/ 配下にCSVがあるか、CSV_LISTの名前が正しいか確認してください。"
         )
+    
     full_train_df = pd.concat(train_df_list, ignore_index=True)
     
     scaler_x = MinMaxScaler()
     scaler_y = MinMaxScaler()
     
-    # ★修正: ここも3つに変更
     feature_cols = ["MovingRange", "HeartRate", "BreathingRate"]
     target_cols = ["HeartRate", "BreathingRate"]
     
+    #入力用
     scaler_x.fit(full_train_df[feature_cols].values)
+    #出力用
     scaler_y.fit(full_train_df[target_cols].values)
     
     # スケーラー保存
@@ -151,7 +156,7 @@ def main():
     train_full = ConcatDataset(train_datasets)
     train_loader = DataLoader(train_full, batch_size=16, shuffle=True)
     
-    # --- 追加: 検証データ（TEST_CSV） ---
+    #検証データ（TEST_CSV)
     val_path = resolve_csv_path(TEST_CSV)
     if val_path is None:
         raise RuntimeError(f"検証用CSVが見つかりません: {TEST_CSV}")
@@ -161,7 +166,6 @@ def main():
     val_loader = DataLoader(val_ds, batch_size=16, shuffle=False)
 
     # 3. モデル学習
-    # ★修正: input_size を 5 -> 3 に変更
     model = LSTMModel(input_size=3, hidden_size=HIDDEN_SIZE, num_layers=NUM_LAYERS, output_size=2)
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
