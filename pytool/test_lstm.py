@@ -1,7 +1,5 @@
 from pathlib import Path
 from collections import deque
-import copy
-
 import numpy as np
 import pandas as pd
 import torch
@@ -27,7 +25,7 @@ MODELS_DIR = BASE_DIR / "models"
 DATA_DIR = BASE_DIR / "cleaned_data"
 LATEST_PATH = MODELS_DIR / "latest.txt"
 
-
+#CSVファイルのパスを解決する関数
 def resolve_csv_path(name: str) -> Path | None:
     p = Path(name)
     if p.is_absolute() and p.exists():
@@ -79,7 +77,7 @@ class LSTMModel(nn.Module):
         out = self.fc(out)
         return out
 
-# realtime_ltsm_line と同じ誤差計算で評価するクラス
+#誤差計算で評価するクラス
 class RealtimeLikeOfflineEvaluator:
     """
     realtime_ltsm_line.py と同じロジック：
@@ -87,6 +85,8 @@ class RealtimeLikeOfflineEvaluator:
       - 1ステップ前の予測(last_prediction_scaled) と 今回実測(target_scaled) のMSEを anomaly_score とする
       - anomaly_score > threshold なら異常
     """
+
+    #初期化
     def __init__(self):
         self.scaler_x = joblib.load(str(SCALER_X_PATH))
         self.scaler_y = joblib.load(str(SCALER_Y_PATH))
@@ -100,6 +100,7 @@ class RealtimeLikeOfflineEvaluator:
         self.buffer = deque(maxlen=WINDOW_SIZE)
         self.last_prediction_scaled = None  # 1ステップ前に予測した「現在」のscaled値（次のstepで評価される）
 
+    #センサの最新１行取得、次時刻の心拍数と呼吸数の予測、異常スコア計算の1ステップ
     def step(self, feature_row_original: np.ndarray):
         """
         feature_row_original: [MovingRange, HeartRate, BreathingRate] (オリジナルスケール)
@@ -107,17 +108,21 @@ class RealtimeLikeOfflineEvaluator:
           - warmup中は None
           - それ以外は dict（pred_next と pred_current、anomaly_score など）
         """
+        #バッファにデータが溜まるまで待つ
         self.buffer.append(feature_row_original.astype(float))
         if len(self.buffer) < WINDOW_SIZE:
             return None
 
+        # 入力データ作成
         input_data = np.array(self.buffer)  # [W, 3]
         input_scaled = self.scaler_x.transform(input_data)
         input_tensor = torch.tensor(input_scaled, dtype=torch.float32).unsqueeze(0)  # [1, W, 3]
 
+        #勾配計算と計算グラフの構築を辞めてスケール後の次データを取得
         with torch.no_grad():
             pred_next_scaled = self.model(input_tensor).numpy()[0]  # [2] scaled
 
+        # 次時刻予測のオリジナルスケール変換
         pred_next_original = self.scaler_y.inverse_transform([pred_next_scaled])[0]  # [2] original
 
         anomaly_score = None

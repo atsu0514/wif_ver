@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -44,6 +43,7 @@ THRESHOLD_PATH = ARTIFACT_DIR / "threshold.txt"
 
 LATEST_PATH = MODELS_DIR / "latest.txt"
 
+#CSVファイルのパスを解決する関数
 def resolve_csv_path(name: str) -> Path | None:
     candidates = [
         DATA_DIR / name,   # cleaned_data優先
@@ -55,6 +55,7 @@ def resolve_csv_path(name: str) -> Path | None:
             return p
     return None
 
+#LSTMモデルの定義
 class LSTMModel(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, output_size):
         super(LSTMModel, self).__init__()
