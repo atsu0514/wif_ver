@@ -166,7 +166,7 @@ void setup() {
  
   hu.configLEDLight(hu.eFALLLed, 1);         // Set HP LED switch, it will not light up even if the sensor detects a person present when set to 0.
   hu.configLEDLight(hu.eHPLed, 1);           // Set FALL LED switch, it will not light up even if the sensor detects a person falling when set to 0.
-  hu.dmInstallHeight(270);                   // Set installation height, it needs to be set according to the actual height of the surface from the sensor, unit: CM.
+  hu.dmInstallHeight(100);                   // Set installation height, it needs to be set according to the actual height of the surface from the sensor, unit: CM.
   hu.dmFallTime(5);                          // Set fall time, the sensor needs to delay the current set time after detecting a person falling before outputting the detected fall, this can avoid false triggering, unit: seconds.
   
   // ★修正: 無人判定時間を 1秒 -> 5秒 に変更（すぐに消灯しないようにする）

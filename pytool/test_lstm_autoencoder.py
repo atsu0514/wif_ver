@@ -9,12 +9,13 @@ import joblib
 import matplotlib.pyplot as plt
 
 
-WINDOW_SIZE = 15
+WINDOW_SIZE = 30
 HIDDEN_SIZE = 32
 NUM_LAYERS = 1
 
 TEST_CSV_LIST = [
-    "cleaned_sensor_data_20251224_164339.csv",
+    "cleaned_sensor_data_20260107_133513_nonbreath.csv",
+    "cleaned_sensor_data_20260107_141840_negaeri.csv",
 ]
 
 FEATURE_COLS = ["MovingRange", "HeartRate", "BreathingRate"]
@@ -56,7 +57,7 @@ THRESHOLD_PATH = ARTIFACT_DIR / "threshold.txt"
 
 
 class LSTMAutoencoder(nn.Module):
-    def __init__(self, input_size=3, hidden_size=32, num_layers=1, output_size=2):
+    def __init__(self, input_size, hidden_size, num_layers, output_size):
         super().__init__()
         self.encoder = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
         self.decoder = nn.LSTM(output_size, hidden_size, num_layers, batch_first=True)
@@ -105,7 +106,12 @@ class RealtimeLikeOfflineEvaluatorAE:
         with torch.no_grad():
             recon_scaled = self.model(x_tensor)[0].cpu().numpy()  # (W,2)
 
-        score = float(np.mean((recon_scaled - y_scaled) ** 2))
+        # (修正前) 窓全体の平均MSE
+        # score = float(np.mean((recon_scaled - y_scaled) ** 2))
+
+        # (修正案) 最後のステップのMSEだけを見る、または重み付けする
+        last_step_error = (recon_scaled[-1] - y_scaled[-1]) ** 2  # (2,)
+        score = float(np.mean(last_step_error))  # 心拍・呼吸の平均
         is_anomaly = bool(score > self.threshold)
 
         # 参考: 最終時刻の復元値（プロット用）
@@ -182,12 +188,12 @@ def eval_csv(csv_name: str):
     breath_mae = float(np.mean(np.abs(true_br_arr - recon_br_arr)))
     breath_rmse = float(np.sqrt(np.mean((true_br_arr - recon_br_arr) ** 2)))
 
-    heart_match = match_rate_percent(true_hr_arr, recon_hr_arr, tol_abs=1.5)
-    breath_match = match_rate_percent(true_br_arr, recon_br_arr, tol_abs=1.5)
+    heart_match = match_rate_percent(true_hr_arr, recon_hr_arr, tol_abs=1.0)
+    breath_match = match_rate_percent(true_br_arr, recon_br_arr, tol_abs=1.0)
 
     print(f"Samples evaluated: {len(scores)}")
-    print(f"Heart  MAE={heart_mae:.3f}, RMSE={heart_rmse:.3f}, Match(±1.5rpm)={heart_match:.1f}%")
-    print(f"Breath MAE={breath_mae:.3f}, RMSE={breath_rmse:.3f}, Match(±1.5rpm)={breath_match:.1f}%")
+    print(f"Heart  MAE={heart_mae:.3f}, RMSE={heart_rmse:.3f}, Match(±1.0rpm)={heart_match:.1f}%")
+    print(f"Breath MAE={breath_mae:.3f}, RMSE={breath_rmse:.3f}, Match(±1.0rpm)={breath_match:.1f}%")
     print(f"Anomaly rate: {float(flags.mean() * 100):.2f}%")
 
     # 可視化（不要なら消してOK）

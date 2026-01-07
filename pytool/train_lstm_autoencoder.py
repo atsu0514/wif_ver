@@ -9,24 +9,33 @@ import joblib  # スケーラー保存用
 import datetime  # 追加
 
 # --- 設定 ---
-WINDOW_SIZE = 15
+WINDOW_SIZE = 30
 HIDDEN_SIZE = 32
 NUM_LAYERS = 1
 CSV_LIST = [
-    "cleaned_sensor_data_20251120_213630.csv",
-    "cleaned_sensor_data_20251126_134706.csv",
-    "cleaned_sensor_data_20251203_000616.csv",
-    "cleaned_sensor_data_20251203_232723.csv",
+    "cleaned_sensor_data_20251203_000616.csv", 
+    "cleaned_sensor_data_20251203_232723.csv", 
+    "cleaned_sensor_data_20251211_143553.csv", 
+    "cleaned_sensor_data_20251211_144659.csv", 
     "cleaned_sensor_data_20251211_145537.csv",
-    "cleaned_sensor_data_20251212_003309.csv",
-    "cleaned_sensor_data_20251213_004316.csv",
+    "cleaned_sensor_data_20251212_001425.csv",
+    "cleaned_sensor_data_20251212_003309.csv", 
+    "cleaned_sensor_data_20251213_004316.csv", 
     "cleaned_sensor_data_20251213_160339.csv",
+    "cleaned_sensor_data_20251214_001933.csv",
     "cleaned_sensor_data_20251218_235445.csv",
     "cleaned_sensor_data_20251219_235637.csv",
     "cleaned_sensor_data_20251222_214718.csv",
     "cleaned_sensor_data_20251224_001236.csv",
+    "cleaned_sensor_data_20251224_164339.csv",
+    "cleaned_sensor_data_20251225_235932.csv",
+    "cleaned_sensor_data_20260105_201035.csv",
+    "cleaned_sensor_data_20260106_201740.csv",
+    "cleaned_sensor_data_20260107_110329.csv",
+    "cleaned_sensor_data_20260107_133048.csv",
+    "cleaned_sensor_data_20260107_133202.csv"
 ]
-TEST_CSV = "cleaned_sensor_data_20251214_001933.csv"
+TEST_CSV = "cleaned_sensor_data_20260107_141840_negaeri.csv"
 
 BASE_DIR = Path(__file__).resolve().parents[1]  # プロジェクトルート
 MODELS_DIR = BASE_DIR / "autoencoder_models"
@@ -57,7 +66,7 @@ def resolve_csv_path(name: str) -> Path | None:
 
 #LSTMAutoencoderモデルの定義
 class LSTMAutoencoder(nn.Module):
-    def __init__(self, input_size=3, hidden_size=32, num_layers=1, output_size=2):
+    def __init__(self, input_size, hidden_size, num_layers, output_size):
         super().__init__()
         self.encoder = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
         self.decoder = nn.LSTM(output_size, hidden_size, num_layers, batch_first=True)
@@ -149,10 +158,22 @@ def main():
         if name == TEST_CSV: continue
         path = resolve_csv_path(name)
         if path:
-            df = pd.read_csv(str(path), parse_dates=["Timestamp"]).sort_values("Timestamp").reset_index(drop=True)
-            ds = SensorDataset(df, scaler_x, scaler_y, window_size=WINDOW_SIZE)
-            if len(ds) > 0:
-                train_datasets.append(ds)
+            try:
+                df = pd.read_csv(str(path), parse_dates=["Timestamp"])
+                
+                # 再度チェック: length check
+                if df.empty or len(df) <= WINDOW_SIZE:
+                    print(f"Skipping {name} (Not enough data: {len(df)} <= {WINDOW_SIZE})")
+                    continue
+                if not all(c in df.columns for c in feature_cols):
+                    continue
+                
+                df = df.sort_values("Timestamp").reset_index(drop=True)
+                ds = SensorDataset(df, scaler_x, scaler_y, window_size=WINDOW_SIZE)
+                if len(ds) > 0:
+                    train_datasets.append(ds)
+            except Exception:
+                continue
     
     train_full = ConcatDataset(train_datasets)
     train_loader = DataLoader(train_full, batch_size=16, shuffle=True)
