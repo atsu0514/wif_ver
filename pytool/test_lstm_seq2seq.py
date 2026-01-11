@@ -9,13 +9,15 @@ import joblib
 import matplotlib.pyplot as plt
 
 
-WINDOW_SIZE = 30
-HIDDEN_SIZE = 32
-NUM_LAYERS = 1
+WINDOW_SIZE = 15
+HIDDEN_SIZE = 128
+NUM_LAYERS = 2
 
 TEST_CSV_LIST = [
     "cleaned_sensor_data_20260107_133513_nonbreath.csv",
     "cleaned_sensor_data_20260107_141840_negaeri.csv",
+    "cleaned_sensor_data_20260110_095603.csv",
+    "cleaned_sensor_data_20260111_103644.csv",
 ]
 
 FEATURE_COLS = ["MovingRange", "HeartRate", "BreathingRate"]
@@ -188,12 +190,12 @@ def eval_csv(csv_name: str):
     breath_mae = float(np.mean(np.abs(true_br_arr - recon_br_arr)))
     breath_rmse = float(np.sqrt(np.mean((true_br_arr - recon_br_arr) ** 2)))
 
-    heart_match = match_rate_percent(true_hr_arr, recon_hr_arr, tol_abs=1.0)
-    breath_match = match_rate_percent(true_br_arr, recon_br_arr, tol_abs=1.0)
+    heart_match = match_rate_percent(true_hr_arr, recon_hr_arr, tol_abs=0.5)
+    breath_match = match_rate_percent(true_br_arr, recon_br_arr, tol_abs=0.5)
 
     print(f"Samples evaluated: {len(scores)}")
-    print(f"Heart  MAE={heart_mae:.3f}, RMSE={heart_rmse:.3f}, Match(±1.0rpm)={heart_match:.1f}%")
-    print(f"Breath MAE={breath_mae:.3f}, RMSE={breath_rmse:.3f}, Match(±1.0rpm)={breath_match:.1f}%")
+    print(f"Heart  MAE={heart_mae:.3f}, RMSE={heart_rmse:.3f}, Match(±0.5rpm)={heart_match:.1f}%")
+    print(f"Breath MAE={breath_mae:.3f}, RMSE={breath_rmse:.3f}, Match(±0.5rpm)={breath_match:.1f}%")
     print(f"Anomaly rate: {float(flags.mean() * 100):.2f}%")
 
     # 可視化（不要なら消してOK）
@@ -230,7 +232,7 @@ def eval_csv(csv_name: str):
     plt.show()
 
 
-def match_rate_percent(true_vals: np.ndarray, pred_vals: np.ndarray, tol_abs: float = 1.5) -> float:
+def match_rate_percent(true_vals: np.ndarray, pred_vals: np.ndarray, tol_abs: float = 0.5) -> float:
     """
     真値の±tol_abs以内を「一致」とみなした割合(%)。
     """

@@ -9,9 +9,9 @@ import joblib  # スケーラー保存用
 import datetime  # 追加
 
 # --- 設定 ---
-WINDOW_SIZE = 30
-HIDDEN_SIZE = 32
-NUM_LAYERS = 1
+WINDOW_SIZE = 15
+HIDDEN_SIZE = 128
+NUM_LAYERS = 2
 CSV_LIST = [
     "cleaned_sensor_data_20251203_000616.csv", 
     "cleaned_sensor_data_20251203_232723.csv", 
@@ -35,7 +35,7 @@ CSV_LIST = [
     "cleaned_sensor_data_20260107_133048.csv",
     "cleaned_sensor_data_20260107_133202.csv"
 ]
-TEST_CSV = "cleaned_sensor_data_20260107_141840_negaeri.csv"
+TEST_CSV = "cleaned_sensor_data_20260108_140956.csv"
 
 BASE_DIR = Path(__file__).resolve().parents[1]  # プロジェクトルート
 MODELS_DIR = BASE_DIR / "autoencoder_models"
@@ -190,7 +190,7 @@ def main():
     # 3. モデル学習
     model = LSTMAutoencoder(input_size=3, hidden_size=HIDDEN_SIZE, num_layers=NUM_LAYERS, output_size=2)
     criterion = nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0010778333212358062)
     
     num_epochs = 50 # 時間短縮のため50にしていますが、必要に応じて増やしてください
     print("Start Training...")

@@ -8,6 +8,7 @@ INPUT_DIR = os.path.dirname(os.path.dirname(__file__))  # プロジェクトル�
 OUTPUT_DIR = os.path.join(INPUT_DIR, "cleaned_data")    # 出力先フォルダ
 THRESHOLD_HEART_RATE = 100
 DROP_INITIAL_SECONDS = 60  # 開始1分間を削除
+DROP_FINAL_SECONDS = 60    # 終了1分間を削除
 
 def clean_csv_files():
     # 出力フォルダ作成
@@ -41,9 +42,13 @@ def clean_csv_files():
             # 開始時刻を取得
             start_time = df["Timestamp"].iloc[0]
             cutoff_time = start_time + datetime.timedelta(seconds=DROP_INITIAL_SECONDS)
-            
-            # 開始1分以降のデータのみ残す
-            cleaned_df = df[df["Timestamp"] >= cutoff_time].copy()
+
+            # 終了時刻を取得
+            end_time = df["Timestamp"].iloc[-1]
+            end_cutoff_time = end_time - datetime.timedelta(seconds=DROP_FINAL_SECONDS)
+
+            # 開始1分以降 かつ 終了1分前より前 のデータのみ残す
+            cleaned_df = df[(df["Timestamp"] >= cutoff_time) & (df["Timestamp"] < end_cutoff_time)].copy()
             
             # もしコメントアウトされていた心拍数制限を戻すならここで行う
             # cleaned_df["HeartRate"] = pd.to_numeric(cleaned_df["HeartRate"], errors="coerce")
