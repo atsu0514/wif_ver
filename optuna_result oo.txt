@@ -1,0 +1,130 @@
+Best Val Loss: 2.3438687684686383e-06
+Best Params: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.0010778333212358062}
+
+
+Loading data...
+Found 20 valid CSV files (out of 22)
+Train files: 18, Val files: 2
+Using device: cuda
+GPU Name: NVIDIA GeForce RTX 3090
+[I 2026-01-07 20:42:31,876] A new study created in memory with name: no-name-36f26b9e-251b-4859-ba0d-ebcfa0c0be04
+
+
+
+
+
+
+」
+[I 2026-01-07 20:56:42,640] Trial 1 finished with value: 0.0004098612882026863 and parameters: {'WINDOW_SIZE': 30, 'HIDDEN_SIZE': 32, 'NUM_LAYERS': 1, 'BATCH_SIZE': 16, 'LEARNING_RATE': 0.0003823475224675188}. Best is trial 0 with value: 0.00022362335653307923.
+[I 2026-01-07 21:00:29,105] Trial 2 finished with value: 0.000218825002959922 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 1, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.0001238513729886094}. Best is trial 2 with value: 0.000218825002959922.
+[I 2026-01-07 21:04:16,651] Trial 3 finished with value: 6.184240490175112e-05 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 64, 'NUM_LAYERS': 1, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.0007591104805282694}. Best is trial 3 with value: 6.184240490175112e-05.
+[I 2026-01-07 21:08:06,821] Trial 4 finished with value: 0.000866886516338779 and parameters: {'WINDOW_SIZE': 30, 'HIDDEN_SIZE': 32, 'NUM_LAYERS': 1, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.00023426581058204064}. Best is trial 3 with value: 6.184240490175112e-05.
+[I 2026-01-07 21:15:03,599] Trial 5 finished with value: 9.173224949347749e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 1, 'BATCH_SIZE': 16, 'LEARNING_RATE': 0.0004473636174621269}. Best is trial 5 with value: 9.173224949347749e-06.
+[I 2026-01-07 21:15:19,953] Trial 6 pruned. 
+[I 2026-01-07 21:15:30,950] Trial 7 pruned. 
+[I 2026-01-07 21:20:06,081] Trial 8 finished with value: 5.415413432526759e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.0008798929749689024}. Best is trial 8 with value: 5.415413432526759e-06.
+[I 2026-01-07 21:20:26,804] Trial 9 pruned. 
+[I 2026-01-07 21:25:01,665] Trial 10 finished with value: 5.278859169518466e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.0020124870829750963}. Best is trial 10 with value: 5.278859169518466e-06.
+[I 2026-01-07 21:29:36,334] Trial 11 finished with value: 3.360845756140659e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.0019383199835819554}. Best is trial 11 with value: 3.360845756140659e-06.
+[I 2026-01-07 21:34:11,324] Trial 12 finished with value: 7.723366057947616e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.00231705730711342}. Best is trial 11 with value: 3.360845756140659e-06.
+[I 2026-01-07 21:38:50,528] Trial 13 finished with value: 4.9114022124811665e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.0023472973391607766}. Best is trial 11 with value: 3.360845756140659e-06.
+[I 2026-01-07 21:39:01,939] Trial 14 pruned. 
+[I 2026-01-07 21:39:13,032] Trial 15 pruned. 
+[I 2026-01-07 21:44:11,299] Trial 16 finished with value: 6.418599342255488e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 64, 'NUM_LAYERS': 2, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.004160617933755996}. Best is trial 11 with value: 3.360845756140659e-06.
+[I 2026-01-07 21:48:52,670] Trial 17 finished with value: 2.3438687684686383e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.0010778333212358062}. Best is trial 17 with value: 2.3438687684686383e-06.
+[I 2026-01-07 21:49:03,608] Trial 18 pruned. 
+[I 2026-01-07 21:49:14,761] Trial 19 pruned. 
+[I 2026-01-07 21:54:03,225] Trial 20 finished with value: 6.210069132153598e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.0014619238532348447}. Best is trial 17 with value: 2.3438687684686383e-06.
+[I 2026-01-07 21:58:44,030] Trial 21 finished with value: 2.8775537174895587e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.0032737121108009017}. Best is trial 17 with value: 2.3438687684686383e-06.
+[I 2026-01-07 22:03:19,647] Trial 22 finished with value: 5.056983908844266e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.0036263049965356655}. Best is trial 17 with value: 2.3438687684686383e-06.
+[I 2026-01-07 22:03:36,199] Trial 23 pruned. 
+[I 2026-01-07 22:08:11,461] Trial 24 finished with value: 4.678590333864313e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.0032623743844148955}. Best is trial 17 with value: 2.3438687684686383e-06.
+[I 2026-01-07 22:08:22,449] Trial 25 pruned. 
+[I 2026-01-07 22:08:53,163] Trial 26 pruned. 
+[I 2026-01-07 22:09:04,571] Trial 27 pruned. 
+[I 2026-01-07 22:09:16,055] Trial 28 pruned. 
+[I 2026-01-07 22:09:37,444] Trial 29 pruned. 
+[I 2026-01-07 22:09:48,881] Trial 30 pruned. 
+[I 2026-01-07 22:14:32,677] Trial 31 finished with value: 3.365293293298286e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.0031215175864322147}. Best is trial 17 with value: 2.3438687684686383e-06.
+[I 2026-01-07 22:14:54,799] Trial 32 pruned. 
+[I 2026-01-07 22:15:05,906] Trial 33 pruned. 
+[I 2026-01-07 22:15:14,931] Trial 34 pruned. 
+[I 2026-01-07 22:15:26,002] Trial 35 pruned. 
+[I 2026-01-07 22:15:42,886] Trial 36 pruned. 
+[I 2026-01-07 22:15:53,925] Trial 37 pruned. 
+[I 2026-01-07 22:16:02,963] Trial 38 pruned. 
+[I 2026-01-07 22:24:42,406] Trial 39 finished with value: 1.1023834939409965e-05 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 64, 'NUM_LAYERS': 2, 'BATCH_SIZE': 16, 'LEARNING_RATE': 0.0019438420986584754}. Best is trial 17 with value: 2.3438687684686383e-06.
+[I 2026-01-07 22:24:51,467] Trial 40 pruned. 
+[I 2026-01-07 22:29:28,907] Trial 41 finished with value: 8.447346486541777e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.0032862423306494223}. Best is trial 17 with value: 2.3438687684686383e-06.
+[I 2026-01-07 22:29:40,433] Trial 42 pruned. 
+[I 2026-01-07 22:29:51,813] Trial 43 pruned. 
+[I 2026-01-07 22:30:03,182] Trial 44 pruned. 
+[I 2026-01-07 22:30:14,275] Trial 45 pruned. 
+[I 2026-01-07 22:30:42,640] Trial 46 pruned. 
+[I 2026-01-07 22:39:18,789] Trial 47 finished with value: 3.313240840130759e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 16, 'LEARNING_RATE': 0.0013082665194506526}. Best is trial 17 with value: 2.3438687684686383e-06.
+[I 2026-01-07 22:39:39,074] Trial 48 pruned. 
+[I 2026-01-07 22:39:59,678] Trial 49 pruned. 
+Best value: 2.3438687684686383e-06
+Best params: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.0010778333212358062}
+
+
+PS C:\Users\atsuh\Documents\mypython\wif_ver> & C:/Users/atsuh/AppData/Local/Programs/Python/Python311/python.exe c:/Users/atsuh/Documents/mypython/wif_ver/pytool/grid_search.py
+Loading data...
+Found 19 valid CSV files (out of 21)
+Train files: 17, Val files: 2
+Using device: cuda
+GPU Name: NVIDIA GeForce RTX 3090
+[I 2026-01-11 12:15:38,401] A new study created in memory with name: no-name-b56e6c86-5c00-4126-84b2-831ed42f6bd1
+[I 2026-01-11 12:22:41,374] Trial 0 finished with value: 0.00010777725902900734 and parameters: {'WINDOW_SIZE': 30, 'HIDDEN_SIZE': 32, 'NUM_LAYERS': 1, 'BATCH_SIZE': 16, 'LEARNING_RATE': 0.0026070247583707684}. Best is trial 0 with value: 0.00010777725902900734.
+[I 2026-01-11 12:29:40,206] Trial 1 finished with value: 0.0002186561938859476 and parameters: {'WINDOW_SIZE': 30, 'HIDDEN_SIZE': 32, 'NUM_LAYERS': 1, 'BATCH_SIZE': 16, 'LEARNING_RATE': 0.0003823475224675188}. Best is trial 0 with value: 0.00010777725902900734.
+[I 2026-01-11 12:33:32,760] Trial 2 finished with value: 0.00010598880587326173 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 1, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.0001238513729886094}. Best is trial 2 with value: 0.00010598880587326173.
+[I 2026-01-11 12:37:18,932] Trial 3 finished with value: 3.1467252409518114e-05 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 64, 'NUM_LAYERS': 1, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.0007591104805282694}. Best is trial 3 with value: 3.1467252409518114e-05.
+[I 2026-01-11 12:41:08,453] Trial 4 finished with value: 0.00035760098000804885 and parameters: {'WINDOW_SIZE': 30, 'HIDDEN_SIZE': 32, 'NUM_LAYERS': 1, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.00023426581058204064}. Best is trial 3 with value: 3.1467252409518114e-05.
+[I 2026-01-11 12:48:07,087] Trial 5 finished with value: 4.875159623111079e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 1, 'BATCH_SIZE': 16, 'LEARNING_RATE': 0.0004473636174621269}. Best is trial 5 with value: 4.875159623111079e-06.
+[I 2026-01-11 12:48:23,566] Trial 6 pruned. 
+[I 2026-01-11 12:48:34,658] Trial 7 pruned. 
+[I 2026-01-11 12:53:08,984] Trial 8 finished with value: 9.558585094128904e-07 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.0008798929749689024}. Best is trial 8 with value: 9.558585094128904e-07.
+[I 2026-01-11 12:53:29,648] Trial 9 pruned. 
+[I 2026-01-11 12:58:03,376] Trial 10 finished with value: 6.520555067758372e-07 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.0020124870829750963}. Best is trial 10 with value: 6.520555067758372e-07.
+[I 2026-01-11 13:02:36,823] Trial 11 finished with value: 1.6812413799706713e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.0019383199835819554}. Best is trial 10 with value: 6.520555067758372e-07.
+[I 2026-01-11 13:07:10,179] Trial 12 finished with value: 5.363190684422495e-07 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.0022302584132839563}. Best is trial 12 with value: 5.363190684422495e-07.
+[I 2026-01-11 13:11:43,747] Trial 13 finished with value: 2.3342339016099155e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.00343481272446158}. Best is trial 12 with value: 5.363190684422495e-07.
+[I 2026-01-11 13:16:17,602] Trial 14 finished with value: 2.181365367277418e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.005358828537716197}. Best is trial 12 with value: 5.363190684422495e-07.
+[I 2026-01-11 13:16:28,510] Trial 15 pruned. 
+[I 2026-01-11 13:21:01,910] Trial 16 finished with value: 3.3070548537741073e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 64, 'NUM_LAYERS': 2, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.0013006199453944975}. Best is trial 12 with value: 5.363190684422495e-07.
+[I 2026-01-11 13:21:12,941] Trial 17 pruned. 
+[I 2026-01-11 13:21:23,827] Trial 18 pruned. 
+[I 2026-01-11 13:21:34,914] Trial 19 pruned. 
+[I 2026-01-11 13:26:08,736] Trial 20 finished with value: 4.832149510731573e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.0013346431403190395}. Best is trial 12 with value: 5.363190684422495e-07.
+[I 2026-01-11 13:30:42,438] Trial 21 finished with value: 3.679916541642639e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.0009491754980844769}. Best is trial 12 with value: 5.363190684422495e-07.
+[I 2026-01-11 13:30:53,463] Trial 22 pruned. 
+[I 2026-01-11 13:35:36,424] Trial 23 finished with value: 3.4996067144532163e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.0011067598820822047}. Best is trial 12 with value: 5.363190684422495e-07.
+[I 2026-01-11 13:40:18,462] Trial 24 finished with value: 8.886660692788281e-07 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.0020536290978837644}. Best is trial 12 with value: 5.363190684422495e-07.
+[I 2026-01-11 13:40:41,177] Trial 25 pruned. 
+[I 2026-01-11 13:49:19,007] Trial 26 finished with value: 6.327886913628609e-07 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 16, 'LEARNING_RATE': 0.0022501939407350447}. Best is trial 12 with value: 5.363190684422495e-07.
+[I 2026-01-11 13:57:52,387] Trial 27 finished with value: 1.8967254731322667e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 16, 'LEARNING_RATE': 0.004293720406267889}. Best is trial 12 with value: 5.363190684422495e-07.
+[I 2026-01-11 13:58:12,970] Trial 28 pruned. 
+[I 2026-01-11 13:58:33,768] Trial 29 pruned. 
+[I 2026-01-11 13:58:54,293] Trial 30 pruned. 
+[I 2026-01-11 14:07:24,070] Trial 31 finished with value: 1.979649231112306e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 16, 'LEARNING_RATE': 0.002205407828172608}. Best is trial 12 with value: 5.363190684422495e-07.
+[I 2026-01-11 14:15:58,418] Trial 32 finished with value: 2.6653546513687446e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 16, 'LEARNING_RATE': 0.0037278386625130403}. Best is trial 12 with value: 5.363190684422495e-07.
+[I 2026-01-11 14:16:14,926] Trial 33 pruned. 
+[I 2026-01-11 14:16:31,487] Trial 34 pruned. 
+[I 2026-01-11 14:16:42,867] Trial 35 pruned. 
+[I 2026-01-11 14:16:52,079] Trial 36 pruned. 
+[I 2026-01-11 14:25:25,469] Trial 37 finished with value: 9.244087515346301e-07 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 16, 'LEARNING_RATE': 0.0011537231166901226}. Best is trial 12 with value: 5.363190684422495e-07.
+[I 2026-01-11 14:25:34,461] Trial 38 pruned. 
+[I 2026-01-11 14:25:51,053] Trial 39 pruned. 
+[I 2026-01-11 14:26:07,580] Trial 40 pruned. 
+[I 2026-01-11 14:34:36,349] Trial 41 finished with value: 4.3002955867372295e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 16, 'LEARNING_RATE': 0.0011103920624551172}. Best is trial 12 with value: 5.363190684422495e-07.
+[I 2026-01-11 14:43:02,017] Trial 42 finished with value: 3.872419712902776e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 16, 'LEARNING_RATE': 0.0014197040503170922}. Best is trial 12 with value: 5.363190684422495e-07.
+[I 2026-01-11 14:43:22,273] Trial 43 pruned. 
+[I 2026-01-11 14:51:48,735] Trial 44 finished with value: 2.2748615765857313e-06 and parameters: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 16, 'LEARNING_RATE': 0.0028983186376324204}. Best is trial 12 with value: 5.363190684422495e-07.
+[I 2026-01-11 14:52:08,978] Trial 45 pruned. 
+[I 2026-01-11 14:52:30,791] Trial 46 pruned. 
+[I 2026-01-11 14:53:11,394] Trial 47 pruned. 
+[I 2026-01-11 14:53:22,136] Trial 48 pruned. 
+[I 2026-01-11 14:55:54,690] Trial 49 pruned. 
+Best value: 5.363190684422495e-07
+
+Best params: {'WINDOW_SIZE': 15, 'HIDDEN_SIZE': 128, 'NUM_LAYERS': 2, 'BATCH_SIZE': 32, 'LEARNING_RATE': 0.0022302584132839563}

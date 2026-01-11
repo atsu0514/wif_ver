@@ -33,7 +33,8 @@ CSV_LIST = [
     "cleaned_sensor_data_20260106_201740.csv",
     "cleaned_sensor_data_20260107_110329.csv",
     "cleaned_sensor_data_20260107_133048.csv",
-    "cleaned_sensor_data_20260107_133202.csv"
+    "cleaned_sensor_data_20260107_133202.csv",
+    "cleaned_sensor_data_20260108_140956.csv"
 ]
 TEST_CSV = "cleaned_sensor_data_20260108_140956.csv"
 
