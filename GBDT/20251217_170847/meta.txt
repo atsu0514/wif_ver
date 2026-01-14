@@ -1,3 +1,0 @@
-model=lightgbm
-window_size=15
-features=['MovingRange', 'HeartRate', 'BreathingRate']
