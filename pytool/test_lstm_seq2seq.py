@@ -190,8 +190,8 @@ def eval_csv(csv_name: str):
     breath_mae = float(np.mean(np.abs(true_br_arr - recon_br_arr)))
     breath_rmse = float(np.sqrt(np.mean((true_br_arr - recon_br_arr) ** 2)))
 
-    heart_match = match_rate_percent(true_hr_arr, recon_hr_arr, tol_abs=0.5)
-    breath_match = match_rate_percent(true_br_arr, recon_br_arr, tol_abs=0.5)
+    heart_match = match_rate_percent(true_hr_arr, recon_hr_arr, tol_abs=0.1)
+    breath_match = match_rate_percent(true_br_arr, recon_br_arr, tol_abs=0.1)
 
     print(f"Samples evaluated: {len(scores)}")
     print(f"Heart  MAE={heart_mae:.3f}, RMSE={heart_rmse:.3f}, Match(±0.5rpm)={heart_match:.1f}%")

@@ -95,7 +95,7 @@ def load_all_dfs() -> list[pd.DataFrame]:
 
 def objective(trial: optuna.Trial, train_dfs, val_dfs, scaler_x, scaler_y, device: torch.device) -> float:
     window_size = trial.suggest_categorical("WINDOW_SIZE", [15, 30, 45])
-    hidden_size = trial.suggest_categorical("HIDDEN_SIZE", [32, 64, 128])
+    hidden_size = trial.suggest_categorical("HIDDEN_SIZE", [32, 64])
     num_layers = trial.suggest_int("NUM_LAYERS", 1, 2)
     batch_size = trial.suggest_categorical("BATCH_SIZE", [16, 32])
     learning_rate = trial.suggest_float("LEARNING_RATE", 1e-4, 1e-2, log=True)
