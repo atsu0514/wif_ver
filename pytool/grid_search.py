@@ -1,5 +1,4 @@
 from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import torch
@@ -20,7 +19,9 @@ DATA_DIR = BASE_DIR / "cleaned_data"
 
 CSV_LIST = sorted([p.name for p in DATA_DIR.glob("cleaned_sensor_data_*.csv")])
 
-SEARCH_EPOCHS = 50
+# 設定変更: Epoch数を増やし、Early Stopping用の忍耐値を設定
+SEARCH_EPOCHS = 200  # 十分に大きく変更
+PATIENCE = 15        # 改善が見られなくなってから何回待つか
 N_TRIALS = 50
 
 
@@ -113,8 +114,18 @@ def objective(trial: optuna.Trial, train_dfs, val_dfs, scaler_x, scaler_y, devic
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.MSELoss()
 
+    train_loss_history = []
+    val_loss_history = []
+    
+    # Early Stopping用変数
+    best_val_loss = float('inf')
+    no_improve_cnt = 0
+    best_epoch = 0
+
     for epoch in range(SEARCH_EPOCHS):
         model.train()
+        train_loss_sum = 0.0
+        train_n = 0
         for x, y in train_loader:
             x = x.to(device)
             y = y.to(device)
@@ -123,6 +134,11 @@ def objective(trial: optuna.Trial, train_dfs, val_dfs, scaler_x, scaler_y, devic
             loss = criterion(model(x), y)
             loss.backward()
             optimizer.step()
+
+            train_loss_sum += loss.item() * x.size(0)
+            train_n += x.size(0)
+
+        avg_train_loss = train_loss_sum / max(train_n, 1)
 
         model.eval()
         val_loss_sum = 0.0
@@ -137,11 +153,36 @@ def objective(trial: optuna.Trial, train_dfs, val_dfs, scaler_x, scaler_y, devic
 
         avg_val_loss = float(val_loss_sum / max(n, 1))
 
+        train_loss_history.append(avg_train_loss)
+        val_loss_history.append(avg_val_loss)
+
+        # === Early Stopping 判定 ===
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            best_epoch = epoch
+            no_improve_cnt = 0
+        else:
+            no_improve_cnt += 1
+
+        # 指定回数連続で改善しなかったらストップ
+        if no_improve_cnt >= PATIENCE:
+            # print(f"  Early Stopping at Epoch {epoch+1} (Best: {best_epoch+1}, Val: {best_val_loss:.6f})")
+            break
+        # ==========================
+
         trial.report(avg_val_loss, epoch)
         if trial.should_prune():
+            trial.set_user_attr("train_loss_history", train_loss_history)
+            trial.set_user_attr("val_loss_history", val_loss_history)
+            trial.set_user_attr("best_epoch", best_epoch) # 記録
             raise optuna.exceptions.TrialPruned()
 
-    return avg_val_loss
+    trial.set_user_attr("train_loss_history", train_loss_history)
+    trial.set_user_attr("val_loss_history", val_loss_history)
+    trial.set_user_attr("best_epoch", best_epoch) # 記録
+
+    # 最も良かった時のLossを返す (最後のEpochの値ではない)
+    return best_val_loss
 
 
 def main():
@@ -175,10 +216,26 @@ def main():
     print("Best value:", study.best_value)
     print("Best params:", study.best_params)
 
+    # === 追加修正: 詳細データのCSV保存 ===
+    # Optunaの全TrialデータをDataFrame化
+    df_trials = study.trials_dataframe()
+    # 保存先
+    details_path = BASE_DIR / "optuna_details.csv"
+    df_trials.to_csv(details_path, index=False)
+    print(f"Saved detailed trials to {details_path}")
+    # ===================================
+
+    # === 追加修正: ベストなEpoch数も取得して保存 ===
+    best_trial = study.best_trial
+    best_epoch_num = best_trial.user_attrs.get("best_epoch", "Unknown")
+    # ============================================
+
     result_path = BASE_DIR / "optuna_result.txt"
     with open(result_path, "w", encoding="utf-8") as f:
         f.write(f"Best Val Loss: {study.best_value}\n")
         f.write(f"Best Params: {study.best_params}\n")
+        f.write(f"Best Epoch: {best_epoch_num}\n")  # ← ここを追加
+        
     print(f"Saved result to {result_path}")
 
 

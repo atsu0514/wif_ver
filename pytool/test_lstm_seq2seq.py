@@ -1,6 +1,5 @@
 from pathlib import Path
 from collections import deque
-
 import numpy as np
 import pandas as pd
 import torch
@@ -10,14 +9,20 @@ import matplotlib.pyplot as plt
 
 
 WINDOW_SIZE = 15
-HIDDEN_SIZE = 128
+HIDDEN_SIZE = 64
 NUM_LAYERS = 2
 
 TEST_CSV_LIST = [
-    "cleaned_sensor_data_20260107_133513_nonbreath.csv",
+    "cleaned_sensor_data_20260107_133513_mukokyuu.csv",
     "cleaned_sensor_data_20260107_141840_negaeri.csv",
     "cleaned_sensor_data_20260110_095603.csv",
     "cleaned_sensor_data_20260111_103644.csv",
+    "cleaned_sensor_data_20260115_142922_kakokyuu.csv",
+    "cleaned_sensor_data_20260115_145841_kakokyuu.csv",
+    "cleaned_sensor_data_20260119_210812mukokyuu.csv",
+    "cleaned_sensor_data_20260119_214346_negaeri.csv",
+    "cleaned_sensor_data_20260119_222651_mukokyuuy.csv",
+    "cleaned_sensor_data_20260116_000242.csv",
 ]
 
 FEATURE_COLS = ["MovingRange", "HeartRate", "BreathingRate"]
@@ -190,8 +195,8 @@ def eval_csv(csv_name: str):
     breath_mae = float(np.mean(np.abs(true_br_arr - recon_br_arr)))
     breath_rmse = float(np.sqrt(np.mean((true_br_arr - recon_br_arr) ** 2)))
 
-    heart_match = match_rate_percent(true_hr_arr, recon_hr_arr, tol_abs=0.1)
-    breath_match = match_rate_percent(true_br_arr, recon_br_arr, tol_abs=0.1)
+    heart_match = match_rate_percent(true_hr_arr, recon_hr_arr, tol_abs=0.5)
+    breath_match = match_rate_percent(true_br_arr, recon_br_arr, tol_abs=0.5)
 
     print(f"Samples evaluated: {len(scores)}")
     print(f"Heart  MAE={heart_mae:.3f}, RMSE={heart_rmse:.3f}, Match(±0.5rpm)={heart_match:.1f}%")

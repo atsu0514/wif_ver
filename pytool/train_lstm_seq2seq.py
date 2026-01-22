@@ -36,7 +36,10 @@ CSV_LIST = [
     "cleaned_sensor_data_20260107_133202.csv",
     "cleaned_sensor_data_20260108_140956.csv"
 ]
-TEST_CSV = "cleaned_sensor_data_20260108_140956.csv"
+TEST_CSV = [
+            "cleaned_sensor_data_20260108_140956.csv",
+            "cleaned_sensor_data_20260114_234600.csv"
+            ]
 
 BASE_DIR = Path(__file__).resolve().parents[1]  # プロジェクトルート
 MODELS_DIR = BASE_DIR / "autoencoder_models"
@@ -123,7 +126,7 @@ def main():
     # 1. データ読み込みとスケーラー作成
     train_df_list = []
     for name in CSV_LIST:
-        if name == TEST_CSV: continue
+        if name in TEST_CSV: continue
         path = resolve_csv_path(name)
         if path is not None:
             df = pd.read_csv(str(path), parse_dates=["Timestamp"]).sort_values("Timestamp").reset_index(drop=True)
@@ -156,7 +159,7 @@ def main():
     # 2. Dataset作成
     train_datasets = []
     for name in CSV_LIST:
-        if name == TEST_CSV: continue
+        if name in TEST_CSV: continue
         path = resolve_csv_path(name)
         if path:
             try:
@@ -180,12 +183,28 @@ def main():
     train_loader = DataLoader(train_full, batch_size=16, shuffle=True)
     
     #検証データ（TEST_CSV)
-    val_path = resolve_csv_path(TEST_CSV)
-    if val_path is None:
-        raise RuntimeError(f"検証用CSVが見つかりません: {TEST_CSV}")
+    val_datasets = []
+    for name in TEST_CSV:
+        val_path = resolve_csv_path(name)
+        if val_path is None:
+            print(f"Warning: Validation CSV not found: {name}")
+            continue
+        try:
+            val_df = pd.read_csv(str(val_path), parse_dates=["Timestamp"]).sort_values("Timestamp").reset_index(drop=True)
+            val_ds_single = SensorDataset(val_df, scaler_x, scaler_y, window_size=WINDOW_SIZE)
+            # データ長チェック
+            if len(val_ds_single) > 0:
+                val_datasets.append(val_ds_single)
+            else:
+                print(f"Skipping val {name} (Not enough data)")
+        except Exception as e:
+            print(f"Error loading validation file {name}: {e}")
+            continue
 
-    val_df = pd.read_csv(str(val_path), parse_dates=["Timestamp"]).sort_values("Timestamp").reset_index(drop=True)
-    val_ds = SensorDataset(val_df, scaler_x, scaler_y, window_size=WINDOW_SIZE)
+    if not val_datasets:
+        raise RuntimeError(f"検証用CSVが有効に見つかりません: {TEST_CSV}")
+
+    val_ds = ConcatDataset(val_datasets)
     val_loader = DataLoader(val_ds, batch_size=16, shuffle=False)
 
     # 3. モデル学習
@@ -210,7 +229,7 @@ def main():
         val_loss = evaluate_loss(model, val_loader, criterion)
 
         if (epoch+1) % 1 == 0:
-            print(f"Epoch {epoch+1}/{num_epochs}, TrainLoss={train_loss:.4f}, ValLoss={val_loss:.4f}")
+            print(f"Epoch {epoch+1}/{num_epochs}, TrainLoss={train_loss:.10f}, ValLoss={val_loss:.10f}")
 
     # モデル保存
     torch.save(model.state_dict(), str(MODEL_PATH))
@@ -228,7 +247,7 @@ def main():
     
     train_losses = np.array(train_losses)
     #3σだと閾値が大きすぎたので99%にする
-    threshold = np.percentile(train_losses, 99.0)
+    threshold = np.percentile(train_losses, 90.0)
     #平均+3σ法でアノマリースコアの閾値を計算
     #threshold = train_losses.mean() + 3 * train_losses.std()
 

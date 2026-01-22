@@ -4,6 +4,7 @@ import datetime
 import time
 import threading
 import logging
+import warnings
 import numpy as np
 import torch
 import torch.nn as nn
@@ -11,33 +12,57 @@ import joblib
 from collections import deque
 import csv
 from flask import Flask, request, abort
-from dotenv import load_dotenv
-from linebot import LineBotApi, WebhookHandler
-from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
+
+# 警告を無視する設定
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+try:
+    from linebot import LineBotApi, WebhookHandler
+    from linebot.exceptions import InvalidSignatureError
+    from linebot.models import MessageEvent, TextMessage, TextSendMessage
+    # SDK v3の警告特定クラスがあれば無視設定に追加
+    try:
+        from linebot.deprecations import LineBotSdkDeprecatedIn30
+        warnings.filterwarnings("ignore", category=LineBotSdkDeprecatedIn30)
+    except ImportError:
+        pass
+except ImportError:
+    print("Error: line-bot-sdk is not installed.")
 
 # ==========================================
 # 1. 設定・環境変数の読み込み
 # ==========================================
 WINDOW_SIZE = 15
-HIDDEN_SIZE = 32
-NUM_LAYERS = 1
-NOTIFY_COOLDOWN = 10  # 異常通知の抑制時間(秒)
+HIDDEN_SIZE = 64
+NUM_LAYERS = 2
+NOTIFY_COOLDOWN = 10 
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-MODELS_DIR = os.path.join(BASE_DIR, "models")
+MODELS_DIR = os.path.join(BASE_DIR, "autoencoder_models")
 LATEST_PATH = os.path.join(MODELS_DIR, "latest.txt")
 LOG_CSV_PATH = os.path.join(BASE_DIR, f"sensor_data_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
 
-# .env読み込み (linetoolフォルダにあると仮定)
+
+# .env読み込み
 ENV_PATH = os.path.join(BASE_DIR, "linetool", ".env")
-load_dotenv(ENV_PATH)
+
+if os.path.exists(ENV_PATH):
+    try:
+        with open(ENV_PATH, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"): continue
+                if "=" in line:
+                    key, val = line.split("=", 1)
+                    # コメント除去などを簡易的に行う
+                    val = val.split("#")[0].strip()
+                    os.environ[key.strip()] = val.strip().strip('"').strip("'")
+    except Exception as e:
+        print(f"Warning: Failed to load .env file: {e}")
 
 CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
 CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
-LINE_USER_ID = os.getenv("LINE_USER_ID")  # プッシュ通知先
+LINE_USER_ID = os.getenv("LINE_USER_ID")
 
-# 共有変数（Botが最新状態を返信するために使用）
 latest_status = {
     "timestamp": None,
     "heart_rate": 0,
@@ -45,15 +70,16 @@ latest_status = {
     "pred_heart": 0.0,
     "pred_breath": 0.0,
     "anomaly_score": 0.0,
-    "is_anomaly": False
+    "is_anomaly": False,
+    "movement": 0
 }
-status_lock = threading.Lock()  # ★これがあるか確認
+status_lock = threading.Lock()
 
 # ==========================================
 # 2. LINE Bot / Flask サーバー設定
 # ==========================================
 app = Flask(__name__)
-# ログを少し静かにする
+# Flaskのアクセスログを抑制（コンソールを見やすくするため）
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
 
@@ -61,8 +87,11 @@ line_bot_api = None
 handler = None
 
 if CHANNEL_SECRET and CHANNEL_ACCESS_TOKEN:
-    line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
-    handler = WebhookHandler(CHANNEL_SECRET)
+    try:
+        line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
+        handler = WebhookHandler(CHANNEL_SECRET)
+    except Exception as e:
+        print(f"LINE Bot Init Error: {e}")
 else:
     print("警告: LINE設定が不足しています。Bot機能は動作しません。")
 
@@ -81,49 +110,55 @@ def callback():
         abort(400)
     return "OK"
 
-@handler.add(MessageEvent, message=TextMessage)
-def handle_text_message(event: MessageEvent):
-    text = event.message.text.strip()
-    
-    if text == "状態" or text == "ステータス":
-        # ★追加: ロックを取得して安全にデータをコピー
-        with status_lock:
-            current_status = latest_status.copy()
+if handler:
+    @handler.add(MessageEvent, message=TextMessage)
+    def handle_text_message(event: MessageEvent):
+        # 受信ログを表示（デバッグ用）
+        print(f"\n[LINE Recv] {event.message.text}")
+        
+        text = event.message.text.strip()
+        reply = None
 
-        if current_status["timestamp"] is None:
-            reply = "まだデータを受信していません。"
-        else:
-            ts_str = current_status["timestamp"].strftime("%H:%M:%S")
-            anom_str = "⚠️異常検知中" if current_status["is_anomaly"] else "✅正常"
-            reply = (
-                f"【現在時刻: {ts_str}】\n"
-                f"状態: {anom_str}\n"
-                f"心拍数: {current_status['heart_rate']} (予測 {current_status['pred_heart']:.1f})\n"
-                f"呼吸数: {current_status['breathing_rate']} (予測 {current_status['pred_breath']:.1f})\n"
-                f"スコア: {current_status['anomaly_score']:.4f}"
-                f"活動状態: {current_status['movement']}"
-            )
-    elif text == "ヘルプ":
-        reply = "「状態」と送ると最新のセンサー値を返します。"
-    else:
-        reply = f"「{text}」ですね。最新情報を知りたい場合は「状態」と送ってください。"
+        if text == "状態" or text == "ステータス":
+            with status_lock:
+                current_status = latest_status.copy()
 
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
+            if current_status["timestamp"] is None:
+                reply = "データ受信待機中です..."
+            else:
+                ts_str = current_status["timestamp"].strftime("%H:%M:%S")
+                anom_str = "⚠️異常検知中" if current_status["is_anomaly"] else "✅正常"
+                # スコアを詳細に表示
+                reply = (
+                    f"【時刻: {ts_str}】\n"
+                    f"状態: {anom_str}\n"
+                    f"活動: {current_status['movement']}\n"
+                    f"心拍: {current_status['heart_rate']}\n"
+                    f"呼吸: {current_status['breathing_rate']}\n"
+                    f"スコア: {current_status['anomaly_score']:.8f}"
+                )
+        elif text == "ヘルプ":
+            reply = "「状態」と送ると最新情報を返します。"
+        
+        if reply:
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
+            print(f"[LINE Sent] {reply.splitlines()[0]}...")
 
 def run_flask_server():
     port = int(os.getenv("PORT", 8000))
-    print(f"LINE Webhook Server starting on port {port}...")
+    print(f"--- LINE Webhook Server running on port {port} ---")
+    print(f" * Check local status: http://localhost:{port}/")
+    print(f" * Note: Use ngrok to expose port {port} for LINE Webhook.")
     app.run(host="0.0.0.0", port=port, use_reloader=False)
 
 def send_push_notification(message):
-    """異常検知時にプッシュ通知を送る"""
     if not line_bot_api or not LINE_USER_ID:
         return
     try:
         line_bot_api.push_message(LINE_USER_ID, TextSendMessage(text=message))
-        print(">> LINE通知送信完了")
+        print(">> PUSH通知送信完了")
     except Exception as e:
-        print(f">> LINE送信エラー: {e}")
+        print(f">> PUSH送信エラー: {e}")
 
 # ==========================================
 # 3. LSTM 推論ロジック
@@ -138,7 +173,7 @@ def _resolve_artifact_dir():
 
 try:
     ARTIFACT_DIR = _resolve_artifact_dir()
-    MODEL_PATH = os.path.join(ARTIFACT_DIR, "lstm_model.pth")
+    MODEL_PATH = os.path.join(ARTIFACT_DIR, "lstm_autoencoder_model.pth")
     SCALER_X_PATH = os.path.join(ARTIFACT_DIR, "scaler_x.pkl")
     SCALER_Y_PATH = os.path.join(ARTIFACT_DIR, "scaler_y.pkl")
     THRESHOLD_PATH = os.path.join(ARTIFACT_DIR, "threshold.txt")
@@ -156,9 +191,9 @@ class LSTMAutoencoder(nn.Module):
     def forward(self, x):
         _, (h, c) = self.encoder(x)
         b, t, _ = x.shape
-        dec_in = torch.zeros((b, t, self.out.out_features), device=x.device, dtype=x.dtype)  # (B,T,2)
+        dec_in = torch.zeros((b, t, self.out.out_features), device=x.device, dtype=x.dtype)
         dec_out, _ = self.decoder(dec_in, (h, c))
-        recon = self.out(dec_out)  # (B,T,2)
+        recon = self.out(dec_out)
         return recon
 
 
@@ -166,52 +201,47 @@ class RealtimePredictor:
     def __init__(self):
         self.scaler_x = joblib.load(SCALER_X_PATH)
         self.scaler_y = joblib.load(SCALER_Y_PATH)
-        # ★ input_size=3 になっているか確認
         self.model = LSTMAutoencoder(3, HIDDEN_SIZE, NUM_LAYERS, 2)
         self.model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
         self.model.eval()
         with open(THRESHOLD_PATH, "r") as f:
             self.threshold = float(f.read())
-        print(f"Loaded model. Threshold: {self.threshold:.4f}")
+        # 閾値を高精度で表示
+        print(f"Loaded model. Threshold: {self.threshold:.8f}")
         self.buffer = deque(maxlen=WINDOW_SIZE)
-        self.last_prediction = None
 
-    def process_new_data(self, data_row):
-        self.buffer.append(data_row)
+    def process_new_data(self, feature_row):
+        self.buffer.append(feature_row)
         if len(self.buffer) < WINDOW_SIZE: return None
         
-        input_data = np.array(self.buffer)
-        input_scaled = self.scaler_x.transform(input_data)
-        input_tensor = torch.tensor(input_scaled, dtype=torch.float32).unsqueeze(0)
+        x_raw = np.array(self.buffer)
+        x_scaled = self.scaler_x.transform(x_raw)
         
+        x_tensor = torch.tensor(x_scaled, dtype=torch.float32).unsqueeze(0)
         with torch.no_grad():
-            pred_scaled = self.model(input_tensor).numpy()[0]
+            y_pred_scaled = self.model(x_tensor).numpy()[0]
         
-        pred_original = self.scaler_y.inverse_transform([pred_scaled])[0]
+        y_true_raw = x_raw[:, 1:3]
+        y_true_scaled = self.scaler_y.transform(y_true_raw)
         
-        anomaly_score = 0.0
-        is_anomaly = False
-        if self.last_prediction is not None:
-            current_target = np.array(data_row[-2:]).reshape(1, -1)
-            current_target_scaled = self.scaler_y.transform(current_target)[0]
-            mse = np.mean((self.last_prediction - current_target_scaled) ** 2)
-            anomaly_score = mse
-            if anomaly_score > self.threshold:
-                is_anomaly = True
+        # MSE計算
+        mse_score = np.mean((y_pred_scaled - y_true_scaled) ** 2)
+        is_anomaly = mse_score > self.threshold
         
-        self.last_prediction = pred_scaled
+        y_pred_last_scaled = y_pred_scaled[-1].reshape(1, -1)
+        y_pred_last_raw = self.scaler_y.inverse_transform(y_pred_last_scaled)[0]
+        
         return {
-            "pred_heart": float(pred_original[0]),
-            "pred_breath": float(pred_original[1]),
-            "anomaly_score": float(anomaly_score),
+            "pred_heart": float(y_pred_last_raw[0]),
+            "pred_breath": float(y_pred_last_raw[1]),
+            "anomaly_score": float(mse_score),
             "is_anomaly": bool(is_anomaly),
         }
 
 def parse_sensor_line(data_line):
     try:
         parts = data_line.strip().split(',')
-        if len(parts) < 5:
-            return None
+        if len(parts) < 5: return None
         return {
             "timestamp": datetime.datetime.now(),
             "presence": int(parts[0]),
@@ -233,7 +263,6 @@ def run_realtime_system():
     predictor = RealtimePredictor()
     last_notify_time = 0
     
-    # CSVオープン
     log_file = open(LOG_CSV_PATH, "w", newline="", encoding="utf-8")
     log_writer = csv.writer(log_file)
     log_writer.writerow([
@@ -242,7 +271,7 @@ def run_realtime_system():
         "PredHeart","PredBreath","AnomalyScore","IsAnomaly"
     ])
 
-    print(f"Waiting for connection on {HOST}:{PORT}...")
+    print(f"Waiting for sensor on {HOST}:{PORT}...")
     
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -268,18 +297,14 @@ def run_realtime_system():
                                     parsed = parse_sensor_line(line)
                                     if not parsed: continue
                                     
-                                    # 推論
-                                    # ★ features が3要素になっているか確認
                                     features = [parsed["moving_range"], parsed["heart_rate"], parsed["breathing_rate"]]
                                     result = predictor.process_new_data(features)
                                     if not result: continue
                                     
-                                    # 結果の展開
                                     ts = parsed["timestamp"]
                                     score = result["anomaly_score"]
                                     is_anom = result["is_anomaly"]
                                     
-                                    # 共有変数の更新（Bot用）
                                     global latest_status
                                     new_status = {
                                         "timestamp": ts,
@@ -292,33 +317,29 @@ def run_realtime_system():
                                         "is_anomaly": is_anom
                                     }
                                     
-                                    # ★追加: ロックを取得して更新
                                     with status_lock:
                                         latest_status = new_status
                                     
-                                    # コンソール表示
                                     alert = "<<< ANOMALY >>>" if is_anom else ""
-                                    print(f"{ts.strftime('%H:%M:%S')} | Score={score:.4f} {alert}")
+                                    # コンソール表示の桁数を増やす (0.0000 -> 0.00000000)
+                                    print(f"{ts.strftime('%H:%M:%S')} | Score={score:.8f} {alert}")
                                     
-                                    # ★ 異常時のLINEプッシュ通知
                                     if is_anom:
                                         now = time.time()
                                         if now - last_notify_time > NOTIFY_COOLDOWN:
                                             msg = (f"⚠️ 異常検知 ⚠️\n"
                                                    f"時刻: {ts.strftime('%H:%M:%S')}\n"
-                                                   f"スコア: {score:.4f}\n"
-                                                   f"心拍: {parsed['heart_rate']} (予測 {result['pred_heart']:.1f})"
-                                                   f"活動状態: {parsed['movement']}")
+                                                   f"スコア: {score:.6f}\n"
+                                                   f"活動: {parsed['movement']}")
                                             send_push_notification(msg)
                                             last_notify_time = now
                                     
-                                    # CSV保存
                                     log_writer.writerow([
                                         ts.strftime("%Y-%m-%d %H:%M:%S.%f"),
                                         parsed["presence"], parsed["movement"], parsed["moving_range"],
                                         parsed["breathing_rate"], parsed["heart_rate"],
                                         f"{result['pred_heart']:.3f}", f"{result['pred_breath']:.3f}",
-                                        f"{score:.6f}", int(is_anom)
+                                        f"{score:.8f}", int(is_anom)
                                     ])
                                     log_file.flush()
                                     
@@ -334,9 +355,8 @@ def run_realtime_system():
         print("System Shutdown.")
 
 if __name__ == "__main__":
-    # 1. Flaskサーバーを別スレッドで起動（LINE Webhook用）
     flask_thread = threading.Thread(target=run_flask_server, daemon=True)
     flask_thread.start()
     
-    # 2. メインスレッドでソケット受信＆推論ループを実行
+    time.sleep(1)
     run_realtime_system()
