@@ -1,4 +1,3 @@
-最初にtrain_lstm.pyを実行してください。
-実行するとltsmによって学習されたpklファイルが生成されます。
-その後、realtime_lstm.pyを実行してください。このファイルはリアルタイムにセンサからデータを取得し、学習したltsmモデルによって心拍数、呼吸数の予測及び異常検出をスコアによって行います。
-realtime_lstmでもセンサからのデータをcsvに保存していますが、学習データの収集はよりシンプルなjust_receive.pyにて行うとよいでしょう。
+envファイルにラインボットのアクセストークンなどを定義してください
+データの収集はsrc/just_receive.py、学習はtrain_encoder_decoder.py、テストはtest_encoder_decoder.pyで実行することができます。
+csvファイルの整理ができていないのでごめん
