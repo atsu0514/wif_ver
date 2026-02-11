@@ -32,7 +32,7 @@ except ImportError:
 # 1. 設定・環境変数の読み込み
 # ==========================================
 WINDOW_SIZE = 15
-HIDDEN_SIZE = 64
+HIDDEN_SIZE = 16
 NUM_LAYERS = 2
 NOTIFY_COOLDOWN = 10 
 
@@ -127,15 +127,16 @@ if handler:
                 reply = "データ受信待機中です..."
             else:
                 ts_str = current_status["timestamp"].strftime("%H:%M:%S")
-                anom_str = "⚠️異常検知中" if current_status["is_anomaly"] else "✅正常"
-                # スコアを詳細に表示
+                status_label = "⚠️異常検知中" if current_status["is_anomaly"] else "✅正常"
+                
+                # フォーマット統一: 手動確認時
                 reply = (
-                    f"【時刻: {ts_str}】\n"
-                    f"状態: {anom_str}\n"
-                    f"活動: {current_status['movement']}\n"
-                    f"心拍: {current_status['heart_rate']}\n"
-                    f"呼吸: {current_status['breathing_rate']}\n"
-                    f"スコア: {current_status['anomaly_score']:.8f}"
+                    f"【ステータス確認】\n"
+                    f"時刻: {ts_str}\n"
+                    f"判定: {status_label}\n"
+                    f"スコア: {current_status['anomaly_score']:.4f}\n"
+                    f"心拍: {current_status['heart_rate']} (予測: {current_status['pred_heart']:.1f})\n"
+                    f"呼吸: {current_status['breathing_rate']} (予測: {current_status['pred_breath']:.1f})"
                 )
         elif text == "ヘルプ":
             reply = "「状態」と送ると最新情報を返します。"
@@ -181,7 +182,7 @@ except Exception as e:
     print(f"モデルパス解決エラー: {e}")
     exit()
 
-class LSTMAutoencoder(nn.Module):
+class LSTMEncoderDecoder(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, output_size):
         super().__init__()
         self.encoder = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
@@ -198,16 +199,32 @@ class LSTMAutoencoder(nn.Module):
 
 
 class RealtimePredictor:
-    def __init__(self):
+    def __init__(self, threshold_type="high"):
         self.scaler_x = joblib.load(SCALER_X_PATH)
         self.scaler_y = joblib.load(SCALER_Y_PATH)
-        self.model = LSTMAutoencoder(3, HIDDEN_SIZE, NUM_LAYERS, 2)
+        self.model = LSTMEncoderDecoder(3, HIDDEN_SIZE, NUM_LAYERS, 2)
         self.model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
         self.model.eval()
-        with open(THRESHOLD_PATH, "r") as f:
-            self.threshold = float(f.read())
-        # 閾値を高精度で表示
-        print(f"Loaded model. Threshold: {self.threshold:.8f}")
+        # --- 複数閾値対応 ---
+        try:
+            with open(THRESHOLD_PATH, "r", encoding="utf-8") as f:
+                lines = f.read().strip().splitlines()
+            vals = [float(x) for x in lines if x.strip()]
+            if not vals:
+                print("Warning: Threshold file empty, using default 0.1")
+                vals = [0.1, 0.1, 0.1]
+        except Exception as e:
+            print(f"Warning: Failed to load threshold: {e}. Using default 0.1")
+            vals = [0.1, 0.1, 0.1]
+        # 閾値タイプ選択
+        self.thresholds = {
+            "low": vals[0] if len(vals) > 0 else 0.1,
+            "mid": vals[1] if len(vals) > 1 else vals[-1],
+            "high": vals[2] if len(vals) > 2 else vals[-1]
+        }
+        self.threshold_type = threshold_type
+        self.threshold = self.thresholds.get(threshold_type, vals[-1])
+        print(f"Loaded model. Using Threshold ({threshold_type}): {self.threshold:.8f}")
         self.buffer = deque(maxlen=WINDOW_SIZE)
 
     def process_new_data(self, feature_row):
@@ -259,10 +276,10 @@ def parse_sensor_line(data_line):
 def run_realtime_system():
     HOST = "172.20.10.2"
     PORT = 7007
-    
-    predictor = RealtimePredictor()
-    last_notify_time = 0
-    
+
+    # --- 閾値設定 ---
+    predictor = RealtimePredictor(threshold_type="high") 
+
     log_file = open(LOG_CSV_PATH, "w", newline="", encoding="utf-8")
     log_writer = csv.writer(log_file)
     log_writer.writerow([
@@ -270,6 +287,9 @@ def run_realtime_system():
         "BreathingRate","HeartRate",
         "PredHeart","PredBreath","AnomalyScore","IsAnomaly"
     ])
+
+    # 通知クールダウン用タイマー初期化
+    last_notify_time = 0 
 
     print(f"Waiting for sensor on {HOST}:{PORT}...")
     
@@ -321,16 +341,24 @@ def run_realtime_system():
                                         latest_status = new_status
                                     
                                     alert = "<<< ANOMALY >>>" if is_anom else ""
-                                    # コンソール表示の桁数を増やす (0.0000 -> 0.00000000)
-                                    print(f"{ts.strftime('%H:%M:%S')} | Score={score:.8f} {alert}")
+                                    print(
+                                        f"{ts.strftime('%H:%M:%S')} | 心拍={parsed['heart_rate']} 呼吸={parsed['breathing_rate']} "
+                                        f"(予測: 呼吸={result['pred_breath']:.3f}, 心拍={result['pred_heart']:.3f}) {alert}"
+                                    )
                                     
                                     if is_anom:
                                         now = time.time()
                                         if now - last_notify_time > NOTIFY_COOLDOWN:
-                                            msg = (f"⚠️ 異常検知 ⚠️\n"
-                                                   f"時刻: {ts.strftime('%H:%M:%S')}\n"
-                                                   f"スコア: {score:.6f}\n"
-                                                   f"活動: {parsed['movement']}")
+                                            # フォーマット統一: 自動通知時
+                                            msg = (
+                                                f"⚠️ 異常検知アラート ⚠️\n"
+                                                f"時刻: {ts.strftime('%H:%M:%S')}\n"
+                                                f"判定: ⚠️異常検知中\n"
+                                                f"スコア: {score:.4f}\n"
+                                                f"心拍: {parsed['heart_rate']} (予測: {result['pred_heart']:.1f})\n"
+                                                f"呼吸: {parsed['breathing_rate']} (予測: {result['pred_breath']:.1f})"
+                                            )
+                                            
                                             send_push_notification(msg)
                                             last_notify_time = now
                                     

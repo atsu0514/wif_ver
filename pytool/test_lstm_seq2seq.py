@@ -9,20 +9,22 @@ import matplotlib.pyplot as plt
 
 
 WINDOW_SIZE = 15
-HIDDEN_SIZE = 64
+HIDDEN_SIZE = 16
 NUM_LAYERS = 2
 
 TEST_CSV_LIST = [
     "cleaned_sensor_data_20260107_133513_mukokyuu.csv",
-    "cleaned_sensor_data_20260107_141840_negaeri.csv",
     "cleaned_sensor_data_20260110_095603.csv",
     "cleaned_sensor_data_20260111_103644.csv",
     "cleaned_sensor_data_20260115_142922_kakokyuu.csv",
-    "cleaned_sensor_data_20260115_145841_kakokyuu.csv",
     "cleaned_sensor_data_20260119_210812mukokyuu.csv",
     "cleaned_sensor_data_20260119_214346_negaeri.csv",
-    "cleaned_sensor_data_20260119_222651_mukokyuuy.csv",
+    "cleaned_sensor_data_20260122_215339_negaeri.csv",
+    "cleaned_sensor_data_20260122_222017_kakokyuu.csv",
     "cleaned_sensor_data_20260116_000242.csv",
+    "cleaned_sensor_data_20260124_225707kakokyuu.csv",
+    "cleaned_sensor_data_20260125_011708_mukokyuu.csv",
+    "cleaned_sensor_data_20260126_204651_negaeri.csv"
 ]
 
 FEATURE_COLS = ["MovingRange", "HeartRate", "BreathingRate"]
@@ -63,7 +65,7 @@ SCALER_Y_PATH = ARTIFACT_DIR / "scaler_y.pkl"
 THRESHOLD_PATH = ARTIFACT_DIR / "threshold.txt"
 
 
-class LSTMAutoencoder(nn.Module):
+class LSTMEncoderDecoder(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, output_size):
         super().__init__()
         self.encoder = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
@@ -90,11 +92,28 @@ class RealtimeLikeOfflineEvaluatorAE:
         self.scaler_x = joblib.load(str(SCALER_X_PATH))
         self.scaler_y = joblib.load(str(SCALER_Y_PATH))
 
-        self.model = LSTMAutoencoder(input_size=3, hidden_size=HIDDEN_SIZE, num_layers=NUM_LAYERS, output_size=2)
+        self.model = LSTMEncoderDecoder(input_size=3, hidden_size=HIDDEN_SIZE, num_layers=NUM_LAYERS, output_size=2)
         self.model.load_state_dict(torch.load(str(MODEL_PATH), map_location="cpu"))
         self.model.eval()
 
-        self.threshold = float(THRESHOLD_PATH.read_text(encoding="utf-8"))
+        # 閾値読み込み（複数行対応）
+        lines = THRESHOLD_PATH.read_text(encoding="utf-8").strip().splitlines()
+        try:
+            self.thresholds = [float(x) for x in lines]
+            if len(self.thresholds) == 1:
+                # 互換性のため、1つしかなければそれをlow/mid/highすべてにする
+                self.thresholds = [self.thresholds[0]] * 3
+        except Exception:
+            # 万が一読み込めない場合のフォールバック（例: デフォルト値）
+            print("Warning: Failed to parse thresholds, using fallback 0.1")
+            self.thresholds = [0.1, 0.1, 0.1]
+            
+        print(f"Loaded thresholds: {self.thresholds}")
+        
+        # 判定用には一番緩い(値が大きい) High(99%) をメインで使うか、
+        # もしくは Low(90%) を使うか決める必要があります。今回はHighを使います。
+        self.threshold_main = self.thresholds[-1] 
+
         self.buffer = deque(maxlen=WINDOW_SIZE)
 
     def step(self, feature_row_original: np.ndarray):
@@ -114,12 +133,14 @@ class RealtimeLikeOfflineEvaluatorAE:
             recon_scaled = self.model(x_tensor)[0].cpu().numpy()  # (W,2)
 
         # (修正前) 窓全体の平均MSE
-        # score = float(np.mean((recon_scaled - y_scaled) ** 2))
+        score = float(np.mean((recon_scaled - y_scaled) ** 2))
 
         # (修正案) 最後のステップのMSEだけを見る、または重み付けする
-        last_step_error = (recon_scaled[-1] - y_scaled[-1]) ** 2  # (2,)
-        score = float(np.mean(last_step_error))  # 心拍・呼吸の平均
-        is_anomaly = bool(score > self.threshold)
+        # last_step_error = (recon_scaled[-1] - y_scaled[-1]) ** 2  # (2,)
+        # score = float(np.mean(last_step_error))  # 心拍・呼吸の平均
+        
+        # 判定にはメインの閾値を使用
+        is_anomaly = bool(score > self.threshold_main)
 
         # 参考: 最終時刻の復元値（プロット用）
         recon_last_original = self.scaler_y.inverse_transform([recon_scaled[-1]])[0]  # (2,)
@@ -128,7 +149,9 @@ class RealtimeLikeOfflineEvaluatorAE:
         return {
             "anomaly_score": score,
             "is_anomaly": is_anomaly,
-            "threshold": float(self.threshold),
+            "threshold_low": self.thresholds[0], # 追加
+            "threshold_mid": self.thresholds[1], # 追加
+            "threshold_high": self.thresholds[2], # 追加
             "recon_last_heart": float(recon_last_original[0]),
             "recon_last_breath": float(recon_last_original[1]),
             "true_last_heart": float(true_last_original[0]),
@@ -151,7 +174,7 @@ def eval_csv(csv_name: str):
     evaluator = RealtimeLikeOfflineEvaluatorAE()
     print(f"\n== {csv_name} ==")
     print(f"Artifacts: {ARTIFACT_DIR}")
-    print(f"Threshold (scaled recon MSE): {evaluator.threshold:.6f}")
+    # print(f"Threshold (scaled recon MSE): {evaluator.threshold:.6f}") # 削除
 
     ts_list = []
     score_list = []
@@ -189,22 +212,30 @@ def eval_csv(csv_name: str):
     true_br_arr = np.array(true_br, dtype=float)
     recon_br_arr = np.array(recon_br, dtype=float)
 
-    # 复元精度（オリジナルスケール、最後の点）
+    # 復元精度（オリジナルスケール、最後の点）
     heart_mae = float(np.mean(np.abs(true_hr_arr - recon_hr_arr)))
     heart_rmse = float(np.sqrt(np.mean((true_hr_arr - recon_hr_arr) ** 2)))
     breath_mae = float(np.mean(np.abs(true_br_arr - recon_br_arr)))
     breath_rmse = float(np.sqrt(np.mean((true_br_arr - recon_br_arr) ** 2)))
 
-    heart_match = match_rate_percent(true_hr_arr, recon_hr_arr, tol_abs=0.5)
-    breath_match = match_rate_percent(true_br_arr, recon_br_arr, tol_abs=0.5)
+    heart_match = match_rate_percent(true_hr_arr, recon_hr_arr, tol_abs=0.2)
+    breath_match = match_rate_percent(true_br_arr, recon_br_arr, tol_abs=0.2)
 
     print(f"Samples evaluated: {len(scores)}")
-    print(f"Heart  MAE={heart_mae:.3f}, RMSE={heart_rmse:.3f}, Match(±0.5rpm)={heart_match:.1f}%")
-    print(f"Breath MAE={breath_mae:.3f}, RMSE={breath_rmse:.3f}, Match(±0.5rpm)={breath_match:.1f}%")
+    print(f"Heart  MAE={heart_mae:.3f}, RMSE={heart_rmse:.3f}, Match(±0.2rpm)={heart_match:.1f}%")
+    print(f"Breath MAE={breath_mae:.3f}, RMSE={breath_rmse:.3f}, Match(±0.2rpm)={breath_match:.1f}%")
     print(f"Anomaly rate: {float(flags.mean() * 100):.2f}%")
 
     # 可視化（不要なら消してOK）
     x = np.arange(len(scores))
+
+    # 目盛り設定用の関数
+    def set_fine_ticks(ax_obj, x_data):
+        # データ点数に応じて間隔を調整 (例: 50点ごと)
+        step = max(1, len(x_data) // 30)  # 全体を20分割程度にする
+        ax_obj.set_xticks(np.arange(0, len(x_data), step))
+        # 縦線グリッドを入れて見やすくする
+        ax_obj.grid(True, which='both', axis='x', linestyle='--', alpha=0.5)
 
     plt.figure(figsize=(10, 4))
     plt.plot(x, true_hr, label="True HeartRate")
@@ -212,6 +243,7 @@ def eval_csv(csv_name: str):
     plt.title(f"HeartRate (recon last step): {csv_name}")
     plt.xlabel("Sample index")
     plt.ylabel("HeartRate")
+    set_fine_ticks(plt.gca(), x)  # 目盛り適用
     plt.legend()
     plt.tight_layout()
     plt.show()
@@ -222,16 +254,29 @@ def eval_csv(csv_name: str):
     plt.title(f"BreathingRate (recon last step): {csv_name}")
     plt.xlabel("Sample index")
     plt.ylabel("BreathingRate")
+    set_fine_ticks(plt.gca(), x)  # 目盛り適用
     plt.legend()
     plt.tight_layout()
     plt.show()
 
     plt.figure(figsize=(10, 4))
-    plt.plot(scores, label="Anomaly Score (scaled recon MSE)", color="red")
-    plt.axhline(y=evaluator.threshold, color="green", linestyle="--", label=f"Threshold={evaluator.threshold:.6f}")
-    plt.title(f"Anomaly Score: {csv_name}")
+    # --- 変更: ラベル名を変更 ---
+    plt.plot(scores, label="Scaled recon MSE", color="red")
+    
+    # 3本の線を引く
+    th_low = evaluator.thresholds[0]
+    th_mid = evaluator.thresholds[1]
+    th_high = evaluator.thresholds[2]
+    
+    plt.axhline(y=th_low, color="orange", linestyle=":", label=f"Low (83%)={th_low:.6f}")
+    plt.axhline(y=th_mid, color="blue", linestyle="--", label=f"Mids (84%)={th_mid:.6f}")
+    plt.axhline(y=th_high, color="green", linestyle="-", label=f"High (85%)={th_high:.6f}")
+    
+    # --- 変更: タイトル名を変更 ---
+    plt.title(f"Scaled recon MSE: {csv_name}")
     plt.xlabel("Sample index")
-    plt.ylabel("Score")
+    plt.ylabel("Reconstruction Error")
+    set_fine_ticks(plt.gca(), x)  # 目盛り適用
     plt.legend()
     plt.tight_layout()
     plt.show()

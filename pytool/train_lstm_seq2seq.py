@@ -10,18 +10,14 @@ import datetime  # 追加
 
 # --- 設定 ---
 WINDOW_SIZE = 15
-HIDDEN_SIZE = 64
+HIDDEN_SIZE = 16
 NUM_LAYERS = 2
 CSV_LIST = [
     "cleaned_sensor_data_20251203_000616.csv", 
     "cleaned_sensor_data_20251203_232723.csv", 
-    "cleaned_sensor_data_20251211_143553.csv", 
-    "cleaned_sensor_data_20251211_144659.csv", 
-    "cleaned_sensor_data_20251211_145537.csv",
     "cleaned_sensor_data_20251212_001425.csv",
     "cleaned_sensor_data_20251212_003309.csv", 
     "cleaned_sensor_data_20251213_004316.csv", 
-    "cleaned_sensor_data_20251213_160339.csv",
     "cleaned_sensor_data_20251214_001933.csv",
     "cleaned_sensor_data_20251218_235445.csv",
     "cleaned_sensor_data_20251219_235637.csv",
@@ -32,13 +28,13 @@ CSV_LIST = [
     "cleaned_sensor_data_20260105_201035.csv",
     "cleaned_sensor_data_20260106_201740.csv",
     "cleaned_sensor_data_20260107_110329.csv",
-    "cleaned_sensor_data_20260107_133048.csv",
-    "cleaned_sensor_data_20260107_133202.csv",
-    "cleaned_sensor_data_20260108_140956.csv"
 ]
 TEST_CSV = [
-            "cleaned_sensor_data_20260108_140956.csv",
-            "cleaned_sensor_data_20260114_234600.csv"
+            "cleaned_sensor_data_val_1_20260108_140956.csv",
+            "cleaned_sensor_data_val_1_20260114_234600.csv",
+            "cleaned_sensor_data_20260115_145841_kakokyuu.csv",
+            "cleaned_sensor_data_20260125_114313_nagaeri.csv",
+            "cleaned_sensor_data_20260119_222651_mukokyuuy.csv"
             ]
 
 BASE_DIR = Path(__file__).resolve().parents[1]  # プロジェクトルート
@@ -68,8 +64,8 @@ def resolve_csv_path(name: str) -> Path | None:
             return p
     return None
 
-#LSTMAutoencoderモデルの定義
-class LSTMAutoencoder(nn.Module):
+#LSTMEncoderDecoderモデルの定義
+class LSTMEncoderDecoder(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, output_size):
         super().__init__()
         self.encoder = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
@@ -77,11 +73,11 @@ class LSTMAutoencoder(nn.Module):
         self.out = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
-        _, (h, c) = self.encoder(x)               # (L,B,H)
+        _, (h, c) = self.encoder(x)               
         b, t, _ = x.shape
-        dec_in = torch.zeros((b, t, self.out.out_features), device=x.device, dtype=x.dtype)  # (B,T,2)
-        dec_out, _ = self.decoder(dec_in, (h, c)) # (B,T,H)
-        recon = self.out(dec_out)                 # (B,T,2)
+        dec_in = torch.zeros((b, t, self.out.out_features), device=x.device, dtype=x.dtype) 
+        dec_out, _ = self.decoder(dec_in, (h, c)) 
+        recon = self.out(dec_out)                 
         return recon
 
 #データからltsmに入力するデータとその次の時刻の教師データを返すクラス
@@ -208,11 +204,11 @@ def main():
     val_loader = DataLoader(val_ds, batch_size=16, shuffle=False)
 
     # 3. モデル学習
-    model = LSTMAutoencoder(input_size=3, hidden_size=HIDDEN_SIZE, num_layers=NUM_LAYERS, output_size=2)
+    model = LSTMEncoderDecoder(input_size=3, hidden_size=HIDDEN_SIZE, num_layers=NUM_LAYERS, output_size=2)
     criterion = nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.0011056456020805483)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0005859354363551846)
     
-    num_epochs = 50 # 時間短縮のため50にしていますが、必要に応じて増やしてください
+    num_epochs = 250 # 時間短縮のため50にしていますが、必要に応じて増やしてください
     print("Start Training...")
     for epoch in range(num_epochs):
         model.train()
@@ -246,14 +242,21 @@ def main():
             train_losses.extend(loss_batch.detach().cpu().numpy())
     
     train_losses = np.array(train_losses)
-    #3σだと閾値が大きすぎたので99%にする
-    threshold = np.percentile(train_losses, 90.0)
-    #平均+3σ法でアノマリースコアの閾値を計算
-    #threshold = train_losses.mean() + 3 * train_losses.std()
-
     
-    THRESHOLD_PATH.write_text(str(threshold), encoding="utf-8")
-    print(f"Threshold saved: {threshold:.4f}")
+    # 閾値を3段階で設定 (90%, 95%, 99%)
+    threshold_low = np.percentile(train_losses, 85.0)
+    threshold_mid = np.percentile(train_losses, 87.0)
+    threshold_high = np.percentile(train_losses, 90.0)
+
+    # テキストファイルに3行で保存する
+    # 読み込み側で .splitlines() などで取得することを想定
+    threshold_str = f"{threshold_low}\n{threshold_mid}\n{threshold_high}"
+    THRESHOLD_PATH.write_text(threshold_str, encoding="utf-8")
+    
+    print(f"Thresholds saved:")
+    print(f"  Low (90%):  {threshold_low:.6f}")
+    print(f"  Mid (95%):  {threshold_mid:.6f}")
+    print(f"  High (99%): {threshold_high:.6f}")
 
     # この学習を「最新」として記録
     MODELS_DIR.mkdir(parents=True, exist_ok=True)

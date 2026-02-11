@@ -37,7 +37,7 @@ def resolve_csv_path(name: str) -> Path | None:
     return None
 
 
-class LSTMAutoencoder(nn.Module):
+class LSTMEncoderDecoder(nn.Module):
     def __init__(self, input_size: int, hidden_size: int, num_layers: int, output_size: int):
         super().__init__()
         self.encoder = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
@@ -110,7 +110,7 @@ def objective(trial: optuna.Trial, train_dfs, val_dfs, scaler_x, scaler_y, devic
     train_loader = DataLoader(ConcatDataset(train_datasets), batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(ConcatDataset(val_datasets), batch_size=batch_size, shuffle=False)
 
-    model = LSTMAutoencoder(input_size=3, hidden_size=hidden_size, num_layers=num_layers, output_size=2).to(device)
+    model = LSTMEncoderDecoder(input_size=3, hidden_size=hidden_size, num_layers=num_layers, output_size=2).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.MSELoss()
 
